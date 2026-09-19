@@ -19,7 +19,10 @@
       },
       "rpcUrls": [
         {
-          "http": "https://rpc.xgr.network"
+          "http": "https://rpc.xgr.network",
+          "pagination": {
+            "maxBlockRange": 500
+          }
         }
       ],
       "mailbox": "0x5632409bc2f0e8bAc4AaF43654D4FFc7822C9c79",
