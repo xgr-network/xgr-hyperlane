@@ -21,7 +21,7 @@ for f in announcement.json index.json metadata_latest.json reorg_flag.json; do
   fi
 done
 
-latest="$(find "${DIR}" -maxdepth 1 -type f -name 'checkpoint_*_with_id.json' -printf '%f\n' | sort -V | tail -n 1 || true)"
+latest="$(find "${DIR}" -maxdepth 1 -type f -name '*_with_id.json' -printf '%f\n' | sort -V | tail -n 1 || true)"
 if [[ -n "${latest}" ]]; then
   echo "--- latest_checkpoint_file=${latest} ---"
   cat "${DIR}/${latest}"
