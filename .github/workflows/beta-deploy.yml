@@ -14,6 +14,7 @@ on:
           - rotate
           - start
           - status
+          - diagnose
   issue_comment:
     types: [created]
 
@@ -38,12 +39,13 @@ jobs:
           github.event.comment.body == '/hyperlane prepare' ||
           github.event.comment.body == '/hyperlane rotate' ||
           github.event.comment.body == '/hyperlane start' ||
-          github.event.comment.body == '/hyperlane status'
+          github.event.comment.body == '/hyperlane status' ||
+          github.event.comment.body == '/hyperlane diagnose'
         )
       )
     runs-on: ubuntu-latest
     env:
-      DEPLOY_ACTION: ${{ github.event_name == 'workflow_dispatch' && inputs.action || (github.event.comment.body == '/hyperlane preflight' && 'preflight' || github.event.comment.body == '/hyperlane prepare' && 'prepare' || github.event.comment.body == '/hyperlane rotate' && 'rotate' || github.event.comment.body == '/hyperlane start' && 'start' || 'status') }}
+      DEPLOY_ACTION: ${{ github.event_name == 'workflow_dispatch' && inputs.action || (github.event.comment.body == '/hyperlane preflight' && 'preflight' || github.event.comment.body == '/hyperlane prepare' && 'prepare' || github.event.comment.body == '/hyperlane rotate' && 'rotate' || github.event.comment.body == '/hyperlane start' && 'start' || github.event.comment.body == '/hyperlane diagnose' && 'diagnose' || 'status') }}
     steps:
       - uses: actions/checkout@v4
 
@@ -63,7 +65,7 @@ jobs:
           chmod 600 ~/.ssh/known_hosts
 
       - name: Upload runtime package
-        if: env.DEPLOY_ACTION != 'status'
+        if: env.DEPLOY_ACTION != 'status' && env.DEPLOY_ACTION != 'diagnose'
         shell: bash
         env:
           HOST: ${{ secrets.HYPERLANE_SSH_HOST }}
@@ -147,6 +149,20 @@ jobs:
             cd "$HOME/xgr-hyperlane"
             ./bootstrap-beta.sh --start
             cat runtime-state/addresses.txt
+          '
+
+      - name: Sanitized diagnostics
+        if: env.DEPLOY_ACTION == 'diagnose'
+        shell: bash
+        env:
+          HOST: ${{ secrets.HYPERLANE_SSH_HOST }}
+          USER: ${{ secrets.HYPERLANE_SSH_USER }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/id_rsa "${USER}@${HOST}" '
+            set -euo pipefail
+            cd "$HOME/xgr-hyperlane"
+            ./diagnose-beta.sh
           '
 
       - name: Runtime status
