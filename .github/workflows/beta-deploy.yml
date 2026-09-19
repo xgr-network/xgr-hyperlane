@@ -65,7 +65,7 @@ jobs:
           chmod 600 ~/.ssh/known_hosts
 
       - name: Upload runtime package
-        if: env.DEPLOY_ACTION != 'status' && env.DEPLOY_ACTION != 'diagnose'
+        if: env.DEPLOY_ACTION != 'status'
         shell: bash
         env:
           HOST: ${{ secrets.HYPERLANE_SSH_HOST }}
