@@ -15,6 +15,8 @@ on:
           - start
           - status
           - diagnose
+          - dispatch-test
+          - checkpoint-status
   issue_comment:
     types: [created]
 
@@ -40,12 +42,14 @@ jobs:
           github.event.comment.body == '/hyperlane rotate' ||
           github.event.comment.body == '/hyperlane start' ||
           github.event.comment.body == '/hyperlane status' ||
-          github.event.comment.body == '/hyperlane diagnose'
+          github.event.comment.body == '/hyperlane diagnose' ||
+          github.event.comment.body == '/hyperlane dispatch-test' ||
+          github.event.comment.body == '/hyperlane checkpoint-status'
         )
       )
     runs-on: ubuntu-latest
     env:
-      DEPLOY_ACTION: ${{ github.event_name == 'workflow_dispatch' && inputs.action || (github.event.comment.body == '/hyperlane preflight' && 'preflight' || github.event.comment.body == '/hyperlane prepare' && 'prepare' || github.event.comment.body == '/hyperlane rotate' && 'rotate' || github.event.comment.body == '/hyperlane start' && 'start' || github.event.comment.body == '/hyperlane diagnose' && 'diagnose' || 'status') }}
+      DEPLOY_ACTION: ${{ github.event_name == 'workflow_dispatch' && inputs.action || (github.event.comment.body == '/hyperlane preflight' && 'preflight' || github.event.comment.body == '/hyperlane prepare' && 'prepare' || github.event.comment.body == '/hyperlane rotate' && 'rotate' || github.event.comment.body == '/hyperlane start' && 'start' || github.event.comment.body == '/hyperlane diagnose' && 'diagnose' || github.event.comment.body == '/hyperlane dispatch-test' && 'dispatch-test' || github.event.comment.body == '/hyperlane checkpoint-status' && 'checkpoint-status' || 'status') }}
     steps:
       - uses: actions/checkout@v4
 
@@ -87,7 +91,7 @@ jobs:
             install -d -m 700 "$HOME/xgr-hyperlane"
             tar -xzf /tmp/xgr-hyperlane-runtime.tgz -C "$HOME/xgr-hyperlane"
             rm -f /tmp/xgr-hyperlane-runtime.tgz
-            chmod 700 "$HOME/xgr-hyperlane/bootstrap-beta.sh" "$HOME/xgr-hyperlane/preflight-beta.sh"
+            chmod 700 "$HOME/xgr-hyperlane/bootstrap-beta.sh" "$HOME/xgr-hyperlane/preflight-beta.sh" "$HOME/xgr-hyperlane/diagnose-beta.sh" "$HOME/xgr-hyperlane/dispatch-beta-test.py" "$HOME/xgr-hyperlane/checkpoint-status.sh"
           '
 
       - name: Preflight Hyperlane configuration
@@ -163,6 +167,34 @@ jobs:
             set -euo pipefail
             cd "$HOME/xgr-hyperlane"
             ./diagnose-beta.sh
+          '
+
+      - name: Controlled XGR to Base Mailbox dispatch
+        if: env.DEPLOY_ACTION == 'dispatch-test'
+        shell: bash
+        env:
+          HOST: ${{ secrets.HYPERLANE_SSH_HOST }}
+          USER: ${{ secrets.HYPERLANE_SSH_USER }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/id_rsa "${USER}@${HOST}" '
+            set -euo pipefail
+            cd "$HOME/xgr-hyperlane"
+            ./dispatch-beta-test.py
+          '
+
+      - name: Checkpoint status
+        if: env.DEPLOY_ACTION == 'checkpoint-status'
+        shell: bash
+        env:
+          HOST: ${{ secrets.HYPERLANE_SSH_HOST }}
+          USER: ${{ secrets.HYPERLANE_SSH_USER }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/id_rsa "${USER}@${HOST}" '
+            set -euo pipefail
+            cd "$HOME/xgr-hyperlane"
+            ./checkpoint-status.sh
           '
 
       - name: Runtime status
