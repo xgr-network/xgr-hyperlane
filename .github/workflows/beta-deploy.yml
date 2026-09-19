@@ -1,0 +1,110 @@
+name: Hyperlane Beta Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "prepare generates host-local keys; start launches validator/relayer"
+        required: true
+        default: "prepare"
+        type: choice
+        options:
+          - prepare
+          - start
+          - status
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hyperlane-beta-runtime
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure SSH
+        shell: bash
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.HYPERLANE_SSH_PRIVATE_KEY }}
+          SSH_HOST_KEY: ${{ secrets.HYPERLANE_SSH_HOST_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "${SSH_PRIVATE_KEY}"
+          test -n "${SSH_HOST_KEY}"
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "${SSH_PRIVATE_KEY}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "${SSH_HOST_KEY}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Upload runtime package
+        if: inputs.action != 'status'
+        shell: bash
+        env:
+          HOST: ${{ secrets.HYPERLANE_SSH_HOST }}
+          USER: ${{ secrets.HYPERLANE_SSH_USER }}
+        run: |
+          set -euo pipefail
+          test -n "${HOST}"
+          test -n "${USER}"
+          tar -C runtime             --exclude='.env.validator'             --exclude='.env.relayer'             --exclude='.env.validator.beta'             --exclude='.env.relayer.beta'             --exclude='runtime-state'             -czf /tmp/xgr-hyperlane-runtime.tgz .
+          scp /tmp/xgr-hyperlane-runtime.tgz "${USER}@${HOST}:/tmp/xgr-hyperlane-runtime.tgz"
+          ssh "${USER}@${HOST}" '
+            set -euo pipefail
+            install -d -m 700 "$HOME/xgr-hyperlane"
+            tar -xzf /tmp/xgr-hyperlane-runtime.tgz -C "$HOME/xgr-hyperlane"
+            rm -f /tmp/xgr-hyperlane-runtime.tgz
+            chmod 700 "$HOME/xgr-hyperlane/bootstrap-beta.sh"
+          '
+
+      - name: Prepare host-local keys
+        if: inputs.action == 'prepare'
+        shell: bash
+        env:
+          HOST: ${{ secrets.HYPERLANE_SSH_HOST }}
+          USER: ${{ secrets.HYPERLANE_SSH_USER }}
+        run: |
+          set -euo pipefail
+          ssh "${USER}@${HOST}" '
+            set -euo pipefail
+            cd "$HOME/xgr-hyperlane"
+            ./bootstrap-beta.sh
+            cat runtime-state/addresses.txt
+          '
+
+      - name: Start beta runtime
+        if: inputs.action == 'start'
+        shell: bash
+        env:
+          HOST: ${{ secrets.HYPERLANE_SSH_HOST }}
+          USER: ${{ secrets.HYPERLANE_SSH_USER }}
+        run: |
+          set -euo pipefail
+          ssh "${USER}@${HOST}" '
+            set -euo pipefail
+            cd "$HOME/xgr-hyperlane"
+            ./bootstrap-beta.sh --start
+            cat runtime-state/addresses.txt
+            docker compose -f docker-compose.beta.yml ps
+          '
+
+      - name: Runtime status
+        if: inputs.action == 'status'
+        shell: bash
+        env:
+          HOST: ${{ secrets.HYPERLANE_SSH_HOST }}
+          USER: ${{ secrets.HYPERLANE_SSH_USER }}
+        run: |
+          set -euo pipefail
+          ssh "${USER}@${HOST}" '
+            set -euo pipefail
+            cd "$HOME/xgr-hyperlane"
+            cat runtime-state/addresses.txt
+            docker compose -f docker-compose.beta.yml ps
+            docker compose -f docker-compose.beta.yml logs --tail=80 validator || true
+            docker compose -f docker-compose.beta.yml logs --tail=80 relayer || true
+          '

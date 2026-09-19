@@ -1,0 +1,36 @@
+services:
+  validator:
+    image: ghcr.io/hyperlane-xyz/hyperlane-agent:2.3.0
+    container_name: xgr-hyperlane-validator
+    command: ["./validator"]
+    restart: unless-stopped
+    env_file:
+      - .env.validator
+    volumes:
+      - hyperlane-validator-db:/data/validator
+    ports:
+      - "127.0.0.1:9094:9094"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  relayer:
+    image: ghcr.io/hyperlane-xyz/hyperlane-agent:2.3.0
+    container_name: xgr-hyperlane-relayer
+    command: ["./relayer"]
+    restart: unless-stopped
+    env_file:
+      - .env.relayer
+    volumes:
+      - hyperlane-relayer-db:/data/relayer
+    ports:
+      - "127.0.0.1:9090:9090"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+volumes:
+  hyperlane-validator-db:
+  hyperlane-relayer-db:

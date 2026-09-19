@@ -1,0 +1,39 @@
+{
+  "network": "xgrchain",
+  "chainId": 1643,
+  "domainId": 1643,
+  "rpc": "https://rpc.xgr.network",
+  "explorer": "https://explorer.xgr.network",
+  "nativeToken": {
+    "name": "XGR",
+    "symbol": "XGR",
+    "decimals": 18
+  },
+  "hyperlaneCoreVersion": "12.1.0",
+  "contracts": {
+    "mailbox": "0x5632409bc2f0e8bAc4AaF43654D4FFc7822C9c79",
+    "mailboxImplementation": "0xAAFc36b53FdC857429351256447E82f626d47F8a",
+    "proxyAdmin": "0xa49AB7f367B6EA25ae1362883F505E2Dc612d1e3",
+    "staticMerkleRootMultisigIsmFactory": "0xefBbbe5739662201d66b4B79017c4F6FC4E23896",
+    "staticAggregationIsmFactory": "0xFEBEa0a947349E0aC857F9b7b248f1027804438e",
+    "domainRoutingIsmFactory": "0xfbcE47b2A2Eb371700C6b82bf001d82996C64035",
+    "domainRoutingIsm": "0xAf03B407FED3c4857A24Be9ac8EC64b7d178AA51",
+    "merkleTreeHook": "0xeD98Af715b5a72dCD412567eb086d48225CDDACF",
+    "protocolFee": "0xf5f7A6D1Bd721D56F016b77e4Fc59C24bE5EA75f",
+    "validatorAnnounce": "0x1814Be3E608883cA510707d3dc6f31792FD5CAaF",
+    "pausableIsm": "0x1175F84765CFeA514ea1fd75162CFE8a6C64d4CA",
+    "baseOriginMerkleRootMultisigIsm": "0x15Aad8569fe7e6E3E6eC6c6dE3f696bB1eEF7148",
+    "baseOriginAggregationIsm": "0x320e8501677532cc1f5c5bb7990b6db72c627b6c"
+  },
+  "transactions": {
+    "pausableIsmDeploy": "0x12799252fa4b11f34e71936287a5dea752c22f05cdb51af57427bd293878a371",
+    "pausePausableIsm": "0xc22e1e45ee6dbd990d9e00a6dd82cf3a46e79e63b08d74733d2796fee31364da",
+    "baseOriginAggregationDeploy": "0xd1f2d50892be7b7fa8ae545654245159ff7d4a2bdf47697358af4aa4c8332313",
+    "baseRoutingUpdate": "0xede49f09799404f7050cb62ebe0bd08dec52506c1a48dd948428f5419d8b46cc"
+  },
+  "state": {
+    "routeOpen": false,
+    "pausableIsmPaused": true,
+    "nativeWarpCustodyEnabled": false
+  }
+}

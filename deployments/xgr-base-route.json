@@ -1,0 +1,32 @@
+{
+  "route": "XGRChain native XGR <-> Base synthetic XGR",
+  "status": "fail_closed_prelaunch",
+  "xgrchain": {
+    "domainId": 1643,
+    "mailbox": "0x5632409bc2f0e8bAc4AaF43654D4FFc7822C9c79",
+    "inboundOrigin": 8453,
+    "domainRoutingIsm": "0xAf03B407FED3c4857A24Be9ac8EC64b7d178AA51",
+    "aggregationIsm": "0x320e8501677532cc1f5c5bb7990b6db72c627b6c",
+    "aggregationThreshold": 2,
+    "aggregationModules": [
+      "0x1175F84765CFeA514ea1fd75162CFE8a6C64d4CA",
+      "0x15Aad8569fe7e6E3E6eC6c6dE3f696bB1eEF7148"
+    ],
+    "pausableIsmPaused": true,
+    "baseValidatorThreshold": "3-of-5"
+  },
+  "base": {
+    "domainId": 8453,
+    "mailbox": "0xeA87ae93Fa0019a82A727bfd3eBd1cFCa8f64f1D",
+    "validatorAnnounce": "0x182E8d7c5F1B06201b102123FC7dF0EaeB445a7B",
+    "merkleTreeHook": "0x19dc38aeae620380430C200a6E990D5Af5480117",
+    "interchainGasPaymaster": "0xc3F23848Ed2e04C0c6d41bd7804fa8f89F940B94",
+    "xgrOriginIsm": null,
+    "syntheticXgrRouter": null
+  },
+  "warp": {
+    "xgrNativeRouter": null,
+    "baseSyntheticRouter": null,
+    "nativeCustodyEnabled": false
+  }
+}
