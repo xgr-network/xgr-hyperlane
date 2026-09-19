@@ -12,9 +12,12 @@ on:
           - prepare
           - start
           - status
+  issue_comment:
+    types: [created]
 
 permissions:
   contents: read
+  issues: read
 
 concurrency:
   group: hyperlane-beta-runtime
@@ -22,7 +25,21 @@ concurrency:
 
 jobs:
   deploy:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event_name == 'issue_comment' &&
+        github.event.issue.number == 1 &&
+        github.actor == 'oliverboehm-xgr' &&
+        (
+          github.event.comment.body == '/hyperlane prepare' ||
+          github.event.comment.body == '/hyperlane start' ||
+          github.event.comment.body == '/hyperlane status'
+        )
+      )
     runs-on: ubuntu-latest
+    env:
+      DEPLOY_ACTION: ${{ github.event_name == 'workflow_dispatch' && inputs.action || (github.event.comment.body == '/hyperlane prepare' && 'prepare' || github.event.comment.body == '/hyperlane start' && 'start' || 'status') }}
     steps:
       - uses: actions/checkout@v4
 
@@ -36,13 +53,13 @@ jobs:
           test -n "${SSH_PRIVATE_KEY}"
           test -n "${SSH_HOST_KEY}"
           install -d -m 700 ~/.ssh
-          printf '%s\n' "${SSH_PRIVATE_KEY}" > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "${SSH_PRIVATE_KEY}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
           printf '%s\n' "${SSH_HOST_KEY}" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
       - name: Upload runtime package
-        if: inputs.action != 'status'
+        if: env.DEPLOY_ACTION != 'status'
         shell: bash
         env:
           HOST: ${{ secrets.HYPERLANE_SSH_HOST }}
@@ -51,9 +68,15 @@ jobs:
           set -euo pipefail
           test -n "${HOST}"
           test -n "${USER}"
-          tar -C runtime             --exclude='.env.validator'             --exclude='.env.relayer'             --exclude='.env.validator.beta'             --exclude='.env.relayer.beta'             --exclude='runtime-state'             -czf /tmp/xgr-hyperlane-runtime.tgz .
-          scp /tmp/xgr-hyperlane-runtime.tgz "${USER}@${HOST}:/tmp/xgr-hyperlane-runtime.tgz"
-          ssh "${USER}@${HOST}" '
+          tar -C runtime \
+            --exclude='.env.validator' \
+            --exclude='.env.relayer' \
+            --exclude='.env.validator.beta' \
+            --exclude='.env.relayer.beta' \
+            --exclude='runtime-state' \
+            -czf /tmp/xgr-hyperlane-runtime.tgz .
+          scp -i ~/.ssh/id_rsa /tmp/xgr-hyperlane-runtime.tgz "${USER}@${HOST}:/tmp/xgr-hyperlane-runtime.tgz"
+          ssh -i ~/.ssh/id_rsa "${USER}@${HOST}" '
             set -euo pipefail
             install -d -m 700 "$HOME/xgr-hyperlane"
             tar -xzf /tmp/xgr-hyperlane-runtime.tgz -C "$HOME/xgr-hyperlane"
@@ -62,29 +85,30 @@ jobs:
           '
 
       - name: Prepare host-local keys
-        if: inputs.action == 'prepare'
+        if: env.DEPLOY_ACTION == 'prepare'
         shell: bash
         env:
           HOST: ${{ secrets.HYPERLANE_SSH_HOST }}
           USER: ${{ secrets.HYPERLANE_SSH_USER }}
         run: |
           set -euo pipefail
-          ssh "${USER}@${HOST}" '
+          ssh -i ~/.ssh/id_rsa "${USER}@${HOST}" '
             set -euo pipefail
             cd "$HOME/xgr-hyperlane"
             ./bootstrap-beta.sh
+            echo "--- public runtime addresses ---"
             cat runtime-state/addresses.txt
           '
 
       - name: Start beta runtime
-        if: inputs.action == 'start'
+        if: env.DEPLOY_ACTION == 'start'
         shell: bash
         env:
           HOST: ${{ secrets.HYPERLANE_SSH_HOST }}
           USER: ${{ secrets.HYPERLANE_SSH_USER }}
         run: |
           set -euo pipefail
-          ssh "${USER}@${HOST}" '
+          ssh -i ~/.ssh/id_rsa "${USER}@${HOST}" '
             set -euo pipefail
             cd "$HOME/xgr-hyperlane"
             ./bootstrap-beta.sh --start
@@ -93,18 +117,20 @@ jobs:
           '
 
       - name: Runtime status
-        if: inputs.action == 'status'
+        if: env.DEPLOY_ACTION == 'status'
         shell: bash
         env:
           HOST: ${{ secrets.HYPERLANE_SSH_HOST }}
           USER: ${{ secrets.HYPERLANE_SSH_USER }}
         run: |
           set -euo pipefail
-          ssh "${USER}@${HOST}" '
+          ssh -i ~/.ssh/id_rsa "${USER}@${HOST}" '
             set -euo pipefail
             cd "$HOME/xgr-hyperlane"
             cat runtime-state/addresses.txt
             docker compose -f docker-compose.beta.yml ps
+            echo "--- validator logs ---"
             docker compose -f docker-compose.beta.yml logs --tail=80 validator || true
+            echo "--- relayer logs ---"
             docker compose -f docker-compose.beta.yml logs --tail=80 relayer || true
           '
