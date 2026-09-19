@@ -1,29 +1,31 @@
 {
-  "xgrchain": {
-    "name": "xgrchain",
-    "displayName": "XGRChain",
-    "chainId": 1643,
-    "domainId": 1643,
-    "protocol": "ethereum",
-    "isTestnet": false,
-    "nativeToken": {
-      "name": "XGR",
-      "symbol": "XGR",
-      "decimals": 18
-    },
-    "blocks": {
-      "confirmations": 1,
-      "reorgPeriod": 0,
-      "estimateBlockTime": 2
-    },
-    "rpcUrls": [
-      {
-        "http": "https://rpc.xgr.network"
-      }
-    ],
-    "mailbox": "0x5632409bc2f0e8bAc4AaF43654D4FFc7822C9c79",
-    "validatorAnnounce": "0x1814Be3E608883cA510707d3dc6f31792FD5CAaF",
-    "merkleTreeHook": "0xeD98Af715b5a72dCD412567eb086d48225CDDACF",
-    "interchainGasPaymaster": "0x0000000000000000000000000000000000000000"
+  "chains": {
+    "xgrchain": {
+      "name": "xgrchain",
+      "displayName": "XGRChain",
+      "chainId": 1643,
+      "domainId": 1643,
+      "protocol": "ethereum",
+      "isTestnet": false,
+      "nativeToken": {
+        "name": "XGR",
+        "symbol": "XGR",
+        "decimals": 18
+      },
+      "blocks": {
+        "confirmations": 1,
+        "reorgPeriod": 0,
+        "estimateBlockTime": 2
+      },
+      "rpcUrls": [
+        {
+          "http": "https://rpc.xgr.network"
+        }
+      ],
+      "mailbox": "0x5632409bc2f0e8bAc4AaF43654D4FFc7822C9c79",
+      "validatorAnnounce": "0x1814Be3E608883cA510707d3dc6f31792FD5CAaF",
+      "merkleTreeHook": "0xeD98Af715b5a72dCD412567eb086d48225CDDACF",
+      "interchainGasPaymaster": "0x0000000000000000000000000000000000000000"
+    }
   }
 }
