@@ -13,7 +13,7 @@ echo "checkpoint_dir=present"
 count="$(find "${DIR}" -maxdepth 1 -type f | wc -l | tr -d ' ')"
 echo "file_count=${count}"
 
-for f in announcement.json checkpoint_latest_index.json metadata_latest.json reorg_flag.json; do
+for f in announcement.json index.json metadata_latest.json reorg_flag.json; do
   if [[ -f "${DIR}/${f}" ]]; then
     echo "--- ${f} ---"
     cat "${DIR}/${f}"
