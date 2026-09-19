@@ -8,8 +8,8 @@ services:
       - .env.validator.beta
     volumes:
       - ./xgrchain.json:/config/xgrchain.json:ro
-      - hyperlane-validator-db:/data/validator
-      - hyperlane-checkpoints:/checkpoints
+      - ./runtime-state/validator-db:/data/validator
+      - ./runtime-state/checkpoints:/checkpoints
     ports:
       - "127.0.0.1:9094:9094"
     security_opt:
@@ -26,16 +26,11 @@ services:
       - .env.relayer.beta
     volumes:
       - ./xgrchain.json:/config/xgrchain.json:ro
-      - hyperlane-relayer-db:/data/relayer
-      - hyperlane-checkpoints:/checkpoints:ro
+      - ./runtime-state/relayer-db:/data/relayer
+      - ./runtime-state/checkpoints:/checkpoints:ro
     ports:
       - "127.0.0.1:9090:9090"
     security_opt:
       - no-new-privileges:true
     cap_drop:
       - ALL
-
-volumes:
-  hyperlane-validator-db:
-  hyperlane-relayer-db:
-  hyperlane-checkpoints:

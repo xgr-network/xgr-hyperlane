@@ -81,17 +81,28 @@ if ! docker info >/dev/null 2>&1; then
   fi
 fi
 
-mkdir -p "${STATE}" "${KEYS}"
+mkdir -p "${STATE}" "${KEYS}" "${STATE}/validator-db" "${STATE}/relayer-db" "${STATE}/checkpoints"
 
 if [[ "${MODE}" == "--rotate-keys" ]]; then
   echo "Stopping closed-beta runtime and discarding beta DB/checkpoint volumes before key rotation."
   "${COMPOSE_CMD[@]}" -f "${COMPOSE_FILE}" down -v || true
-  rm -rf "${KEYS}/validator" "${KEYS}/relayer"
+  rm -rf "${KEYS}/validator" "${KEYS}/relayer" "${STATE}/validator-db" "${STATE}/relayer-db" "${STATE}/checkpoints"
   rm -f "${ROOT}/.env.validator.beta" "${ROOT}/.env.relayer.beta"
 fi
 
-mkdir -p "${KEYS}/validator" "${KEYS}/relayer"
+mkdir -p "${KEYS}/validator" "${KEYS}/relayer" "${STATE}/validator-db" "${STATE}/relayer-db" "${STATE}/checkpoints"
 chmod 700 "${STATE}" "${KEYS}" "${KEYS}/validator" "${KEYS}/relayer"
+chmod 755 "${STATE}/validator-db" "${STATE}/relayer-db" "${STATE}/checkpoints"
+
+# Hyperlane agent 2.3.0 runs as UID 1000. Normalize beta bind-mount ownership
+# without requiring host sudo.
+"${COMPOSE_CMD[@]}" pull validator relayer >/dev/null
+docker run --rm --user 0 --entrypoint chown \
+  -v "${STATE}/validator-db:/target" ghcr.io/hyperlane-xyz/hyperlane-agent:2.3.0 -R 1000:1000 /target
+docker run --rm --user 0 --entrypoint chown \
+  -v "${STATE}/relayer-db:/target" ghcr.io/hyperlane-xyz/hyperlane-agent:2.3.0 -R 1000:1000 /target
+docker run --rm --user 0 --entrypoint chown \
+  -v "${STATE}/checkpoints:/target" ghcr.io/hyperlane-xyz/hyperlane-agent:2.3.0 -R 1000:1000 /target
 
 ensure_key() {
   local dir="$1"
