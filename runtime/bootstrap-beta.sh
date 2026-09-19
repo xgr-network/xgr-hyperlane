@@ -8,6 +8,7 @@ KEYS="${STATE}/keys"
 XGRCHAIN_BIN="${XGRCHAIN_BIN:-/usr/local/bin/xgrchain}"
 COMPOSE_FILE="${ROOT}/docker-compose.beta.yml"
 COMPOSE_VERSION="v5.5.1"
+MODE="${1:-prepare}"
 
 if [[ ! -x "${XGRCHAIN_BIN}" ]]; then
   echo "xgrchain binary not found at ${XGRCHAIN_BIN}" >&2
@@ -80,6 +81,15 @@ if ! docker info >/dev/null 2>&1; then
   fi
 fi
 
+mkdir -p "${STATE}" "${KEYS}"
+
+if [[ "${MODE}" == "--rotate-keys" ]]; then
+  echo "Stopping closed-beta runtime and discarding beta DB/checkpoint volumes before key rotation."
+  "${COMPOSE_CMD[@]}" -f "${COMPOSE_FILE}" down -v || true
+  rm -rf "${KEYS}/validator" "${KEYS}/relayer"
+  rm -f "${ROOT}/.env.validator.beta" "${ROOT}/.env.relayer.beta"
+fi
+
 mkdir -p "${KEYS}/validator" "${KEYS}/relayer"
 chmod 700 "${STATE}" "${KEYS}" "${KEYS}/validator" "${KEYS}/relayer"
 
@@ -121,11 +131,14 @@ chmod 644 "${STATE}/addresses.txt"
 echo "Hyperlane beta runtime prepared."
 echo "Validator address: ${VALIDATOR_ADDRESS}"
 echo "Relayer/Base deployer address: ${RELAYER_ADDRESS}"
-echo "No private keys were printed."
+echo "Private keys remain host-local."
 echo "Base->XGR must remain paused."
 
-if [[ "${1:-}" == "--start" ]]; then
+if [[ "${MODE}" == "--start" ]]; then
   "${COMPOSE_CMD[@]}" -f "${COMPOSE_FILE}" pull
   "${COMPOSE_CMD[@]}" -f "${COMPOSE_FILE}" up -d
   "${COMPOSE_CMD[@]}" -f "${COMPOSE_FILE}" ps
+elif [[ "${MODE}" != "prepare" && "${MODE}" != "--rotate-keys" ]]; then
+  echo "unsupported mode: ${MODE}" >&2
+  exit 2
 fi

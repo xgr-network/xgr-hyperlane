@@ -4,12 +4,14 @@ on:
   workflow_dispatch:
     inputs:
       action:
-        description: "prepare generates host-local keys; start launches validator/relayer"
+        description: "preflight validates config; prepare creates keys; rotate replaces beta keys; start launches agents"
         required: true
-        default: "prepare"
+        default: "preflight"
         type: choice
         options:
+          - preflight
           - prepare
+          - rotate
           - start
           - status
   issue_comment:
@@ -32,14 +34,16 @@ jobs:
         github.event.issue.number == 1 &&
         github.actor == 'oliverboehm-xgr' &&
         (
+          github.event.comment.body == '/hyperlane preflight' ||
           github.event.comment.body == '/hyperlane prepare' ||
+          github.event.comment.body == '/hyperlane rotate' ||
           github.event.comment.body == '/hyperlane start' ||
           github.event.comment.body == '/hyperlane status'
         )
       )
     runs-on: ubuntu-latest
     env:
-      DEPLOY_ACTION: ${{ github.event_name == 'workflow_dispatch' && inputs.action || (github.event.comment.body == '/hyperlane prepare' && 'prepare' || github.event.comment.body == '/hyperlane start' && 'start' || 'status') }}
+      DEPLOY_ACTION: ${{ github.event_name == 'workflow_dispatch' && inputs.action || (github.event.comment.body == '/hyperlane preflight' && 'preflight' || github.event.comment.body == '/hyperlane prepare' && 'prepare' || github.event.comment.body == '/hyperlane rotate' && 'rotate' || github.event.comment.body == '/hyperlane start' && 'start' || 'status') }}
     steps:
       - uses: actions/checkout@v4
 
@@ -81,7 +85,21 @@ jobs:
             install -d -m 700 "$HOME/xgr-hyperlane"
             tar -xzf /tmp/xgr-hyperlane-runtime.tgz -C "$HOME/xgr-hyperlane"
             rm -f /tmp/xgr-hyperlane-runtime.tgz
-            chmod 700 "$HOME/xgr-hyperlane/bootstrap-beta.sh"
+            chmod 700 "$HOME/xgr-hyperlane/bootstrap-beta.sh" "$HOME/xgr-hyperlane/preflight-beta.sh"
+          '
+
+      - name: Preflight Hyperlane configuration
+        if: env.DEPLOY_ACTION == 'preflight'
+        shell: bash
+        env:
+          HOST: ${{ secrets.HYPERLANE_SSH_HOST }}
+          USER: ${{ secrets.HYPERLANE_SSH_USER }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/id_rsa "${USER}@${HOST}" '
+            set -euo pipefail
+            cd "$HOME/xgr-hyperlane"
+            ./preflight-beta.sh
           '
 
       - name: Prepare host-local keys
@@ -100,6 +118,22 @@ jobs:
             cat runtime-state/addresses.txt
           '
 
+      - name: Rotate closed-beta keys
+        if: env.DEPLOY_ACTION == 'rotate'
+        shell: bash
+        env:
+          HOST: ${{ secrets.HYPERLANE_SSH_HOST }}
+          USER: ${{ secrets.HYPERLANE_SSH_USER }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/id_rsa "${USER}@${HOST}" '
+            set -euo pipefail
+            cd "$HOME/xgr-hyperlane"
+            ./bootstrap-beta.sh --rotate-keys
+            echo "--- new public runtime addresses ---"
+            cat runtime-state/addresses.txt
+          '
+
       - name: Start beta runtime
         if: env.DEPLOY_ACTION == 'start'
         shell: bash
@@ -113,7 +147,6 @@ jobs:
             cd "$HOME/xgr-hyperlane"
             ./bootstrap-beta.sh --start
             cat runtime-state/addresses.txt
-            docker compose -f docker-compose.beta.yml ps
           '
 
       - name: Runtime status
@@ -129,8 +162,7 @@ jobs:
             cd "$HOME/xgr-hyperlane"
             cat runtime-state/addresses.txt
             docker compose -f docker-compose.beta.yml ps
-            echo "--- validator logs ---"
-            docker compose -f docker-compose.beta.yml logs --tail=80 validator || true
-            echo "--- relayer logs ---"
-            docker compose -f docker-compose.beta.yml logs --tail=80 relayer || true
+            for c in xgr-hyperlane-validator-beta xgr-hyperlane-relayer-beta; do
+              docker inspect --format "{{.Name}} status={{.State.Status}} exit={{.State.ExitCode}} restarts={{.RestartCount}}" "$c" 2>/dev/null || true
+            done
           '

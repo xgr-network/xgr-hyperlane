@@ -7,6 +7,7 @@ services:
     env_file:
       - .env.validator.beta
     volumes:
+      - ./xgrchain.json:/config/xgrchain.json:ro
       - hyperlane-validator-db:/data/validator
       - hyperlane-checkpoints:/checkpoints
     ports:
@@ -24,6 +25,7 @@ services:
     env_file:
       - .env.relayer.beta
     volumes:
+      - ./xgrchain.json:/config/xgrchain.json:ro
       - hyperlane-relayer-db:/data/relayer
       - hyperlane-checkpoints:/checkpoints:ro
     ports:
