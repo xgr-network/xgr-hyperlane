@@ -12,3 +12,22 @@ for service in validator relayer; do
   echo "--- ${service} sanitized diagnostics ---"
   docker compose -f docker-compose.beta.yml logs --tail=120 "${service}" 2>&1 | sanitize
 done
+
+
+echo "--- available signing tools ---"
+for cmd in node npm npx python3 pip3 go openssl curl; do
+  if command -v "$cmd" >/dev/null 2>&1; then
+    printf '%s=%s\n' "$cmd" "$(command -v "$cmd")"
+  else
+    printf '%s=missing\n' "$cmd"
+  fi
+done
+python3 - <<'PY' 2>/dev/null || true
+mods = ["eth_account", "web3", "eth_keys", "rlp", "Crypto", "cryptography"]
+for m in mods:
+    try:
+        __import__(m)
+        print(f"python_{m}=present")
+    except Exception:
+        print(f"python_{m}=missing")
+PY
