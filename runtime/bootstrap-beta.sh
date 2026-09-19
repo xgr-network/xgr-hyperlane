@@ -147,7 +147,7 @@ echo "Base->XGR must remain paused."
 
 if [[ "${MODE}" == "--start" ]]; then
   "${COMPOSE_CMD[@]}" -f "${COMPOSE_FILE}" pull
-  "${COMPOSE_CMD[@]}" -f "${COMPOSE_FILE}" up -d
+  "${COMPOSE_CMD[@]}" -f "${COMPOSE_FILE}" up -d --force-recreate
   "${COMPOSE_CMD[@]}" -f "${COMPOSE_FILE}" ps
 elif [[ "${MODE}" != "prepare" && "${MODE}" != "--rotate-keys" ]]; then
   echo "unsupported mode: ${MODE}" >&2
