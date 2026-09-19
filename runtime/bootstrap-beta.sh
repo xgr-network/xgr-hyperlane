@@ -64,6 +64,22 @@ ensure_compose_plugin() {
 
 ensure_compose_plugin
 
+COMPOSE_CMD=(docker compose)
+if ! docker info >/dev/null 2>&1; then
+  if sudo -n docker info >/dev/null 2>&1; then
+    COMPOSE_PLUGIN="${HOME}/.docker/cli-plugins/docker-compose"
+    if [[ ! -x "${COMPOSE_PLUGIN}" ]]; then
+      echo "user-scoped Docker Compose plugin missing at ${COMPOSE_PLUGIN}" >&2
+      exit 1
+    fi
+    COMPOSE_CMD=(sudo -n "${COMPOSE_PLUGIN}")
+    echo "Docker socket requires elevated access; using passwordless sudo for Compose only."
+  else
+    echo "Docker daemon is not accessible to this user and passwordless sudo is unavailable." >&2
+    exit 1
+  fi
+fi
+
 mkdir -p "${KEYS}/validator" "${KEYS}/relayer"
 chmod 700 "${STATE}" "${KEYS}" "${KEYS}/validator" "${KEYS}/relayer"
 
@@ -100,7 +116,7 @@ relayer=${RELAYER_ADDRESS}
 EOF
 chmod 644 "${STATE}/addresses.txt"
 
-docker compose -f "${COMPOSE_FILE}" config >/dev/null
+"${COMPOSE_CMD[@]}" -f "${COMPOSE_FILE}" config >/dev/null
 
 echo "Hyperlane beta runtime prepared."
 echo "Validator address: ${VALIDATOR_ADDRESS}"
@@ -109,7 +125,7 @@ echo "No private keys were printed."
 echo "Base->XGR must remain paused."
 
 if [[ "${1:-}" == "--start" ]]; then
-  docker compose -f "${COMPOSE_FILE}" pull
-  docker compose -f "${COMPOSE_FILE}" up -d
-  docker compose -f "${COMPOSE_FILE}" ps
+  "${COMPOSE_CMD[@]}" -f "${COMPOSE_FILE}" pull
+  "${COMPOSE_CMD[@]}" -f "${COMPOSE_FILE}" up -d
+  "${COMPOSE_CMD[@]}" -f "${COMPOSE_FILE}" ps
 fi
