@@ -244,6 +244,51 @@ contract XGRInterchainValidatorRegistryTest is Test {
         );
     }
 
+    function testProofLifetimeCannotBeUnbounded() public {
+        XGRInterchainValidatorRegistry.MembershipTransition memory transition =
+            _transition(1, D, BLS_D, EIP_D);
+        transition.validUntil = uint64(block.timestamp + 11 minutes);
+
+        vm.expectRevert(XGRInterchainValidatorRegistry.InvalidTransition.selector);
+        registry.applyMembership{value: MIN_RESERVE}(
+            transition,
+            hex"03",
+            hex"1234"
+        );
+    }
+
+    function testCannotRemoveFinalValidator() public {
+        registry.applyMembership(
+            _transition(2, A, BLS_A, EIP_A),
+            hex"03",
+            hex"1234"
+        );
+
+        XGRInterchainValidatorRegistry.MembershipTransition memory removeB =
+            XGRInterchainValidatorRegistry.MembershipTransition({
+                expectedSetId: 2,
+                validUntil: deadline,
+                action: 2,
+                validator: B,
+                blsPublicKey: BLS_B,
+                blsPublicKeyEIP2537: EIP_B
+            });
+        registry.applyMembership(removeB, hex"03", hex"1234");
+
+        XGRInterchainValidatorRegistry.MembershipTransition memory removeC =
+            XGRInterchainValidatorRegistry.MembershipTransition({
+                expectedSetId: 3,
+                validUntil: deadline,
+                action: 2,
+                validator: C,
+                blsPublicKey: BLS_C,
+                blsPublicKeyEIP2537: EIP_C
+            });
+
+        vm.expectRevert(XGRInterchainValidatorRegistry.InvalidTransition.selector);
+        registry.applyMembership(removeC, hex"01", hex"1234");
+    }
+
     function _transition(
         uint8 action,
         address validator,
