@@ -38,7 +38,7 @@ contract XGRInterchainValidatorRegistryTest is Test {
         EIP_B = _eipKey(0xB2);
         EIP_C = _eipKey(0xC3);
         EIP_D = _eipKey(0xD4);
-        deadline = uint64(block.timestamp + 1 hours);
+        deadline = uint64(block.timestamp + 5 minutes);
         vm.txGasPrice(1 gwei);
 
         address[] memory validators = new address[](3);
