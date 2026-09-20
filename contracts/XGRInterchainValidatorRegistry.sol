@@ -277,18 +277,24 @@ contract XGRInterchainValidatorRegistry {
         if (validatorCount == 0 || threshold == 0) return false;
         uint256 count;
         for (uint256 i = 0; i < validatorCount; i++) {
-            uint256 byteIndex = i >> 3;
+            uint256 byteFromEnd = i >> 3;
             uint256 bitIndex = i & 7;
-            if (byteIndex < bitmap.length && (uint8(bitmap[byteIndex]) & uint8(1 << bitIndex)) != 0) {
+            if (
+                byteFromEnd < bitmap.length &&
+                (uint8(bitmap[bitmap.length - 1 - byteFromEnd]) & uint8(1 << bitIndex)) != 0
+            ) {
                 count++;
             }
         }
 
         // Reject any set bit outside the current set.
         for (uint256 i = validatorCount; i < bitmap.length * 8; i++) {
-            uint256 byteIndex = i >> 3;
+            uint256 byteFromEnd = i >> 3;
             uint256 bitIndex = i & 7;
-            if ((uint8(bitmap[byteIndex]) & uint8(1 << bitIndex)) != 0) return false;
+            if (
+                byteFromEnd < bitmap.length &&
+                (uint8(bitmap[bitmap.length - 1 - byteFromEnd]) & uint8(1 << bitIndex)) != 0
+            ) return false;
         }
 
         return count >= threshold;
