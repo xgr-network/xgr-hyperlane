@@ -211,24 +211,11 @@ contract XGRInterchainValidatorRegistry {
     ///      For REMOVE, msg.value must be zero and the existing reserve finances the
     ///      successful executor; any remainder is returned to the validator.
     function applyMembership(
-        uint64 expectedSetId,
-        uint64 validUntil,
-        uint8 action,
-        address validator,
-        bytes calldata validatorBLSPublicKey,
-        bytes calldata validatorBLSPublicKeyEIP2537,
+        MembershipTransition calldata transition,
         bytes calldata signerBitmap,
         bytes calldata aggregateSignature
     ) external payable {
         uint256 gasStart = gasleft();
-        MembershipTransition memory transition = MembershipTransition({
-            expectedSetId: expectedSetId,
-            validUntil: validUntil,
-            action: action,
-            validator: validator,
-            blsPublicKey: validatorBLSPublicKey,
-            blsPublicKeyEIP2537: validatorBLSPublicKeyEIP2537
-        });
 
         _verifyMembershipTransition(transition, signerBitmap, aggregateSignature);
 
@@ -246,7 +233,7 @@ contract XGRInterchainValidatorRegistry {
     }
 
     function _verifyMembershipTransition(
-        MembershipTransition memory transition,
+        MembershipTransition calldata transition,
         bytes calldata signerBitmap,
         bytes calldata aggregateSignature
     ) internal view {
@@ -344,7 +331,7 @@ contract XGRInterchainValidatorRegistry {
         );
     }
 
-    function _applyAdd(MembershipTransition memory transition) internal {
+    function _applyAdd(MembershipTransition calldata transition) internal {
         bytes32 keyHash = keccak256(transition.blsPublicKey);
         if (
             validatorInfo[transition.validator].active ||
@@ -368,7 +355,7 @@ contract XGRInterchainValidatorRegistry {
         emit ValidatorAdded(transition.validator, setId + 1, msg.value);
     }
 
-    function _applyRemove(MembershipTransition memory transition, uint256 gasStart) internal {
+    function _applyRemove(MembershipTransition calldata transition, uint256 gasStart) internal {
         if (msg.value != 0) revert InvalidTransition();
 
         Validator storage v = validatorInfo[transition.validator];
