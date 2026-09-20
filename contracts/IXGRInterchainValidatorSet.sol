@@ -2,6 +2,10 @@
 pragma solidity ^0.8.24;
 
 interface IXGRInterchainValidatorSet {
+    function originChainId() external view returns (uint64);
+    function destinationDomain() external view returns (uint32);
+    function verifier() external view returns (address);
+
     function getValidatorStatus(address validator)
         external
         view
@@ -17,5 +21,6 @@ interface IXGRInterchainValidatorSet {
         view
         returns (address[] memory validators, bytes[] memory blsPublicKeysEIP2537, uint64 setId);
 
+    function quorumThreshold() external view returns (uint256);
     function validatorSetCommitment(uint64 setId) external view returns (bytes32);
 }

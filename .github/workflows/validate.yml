@@ -2,7 +2,7 @@ name: Validate
 
 on:
   push:
-    branches: [main]
+    branches: [main, "feature/native-interchain-registry-v1"]
   pull_request:
   workflow_dispatch:
 
@@ -16,10 +16,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test ! -e runtime/.env.validator
           test ! -e runtime/.env.relayer
-          test ! -e runtime/.env.validator.beta
-          test ! -e runtime/.env.relayer.beta
           if git grep -nE '(^|=)(0x)?[0-9a-fA-F]{64}$' -- runtime ':!runtime/*.example'; then
             echo "Potential raw private key found in tracked runtime files" >&2
             exit 1
@@ -31,20 +28,18 @@ jobs:
           set -euo pipefail
           jq empty deployments/xgrchain-mainnet.json
           jq empty deployments/xgr-base-route.json
+          jq empty runtime/native-relayer/package.json
 
-      - name: Validate shell syntax
+      - name: Validate shell and relayer syntax
         shell: bash
         run: |
           set -euo pipefail
-          bash -n runtime/bootstrap-beta.sh
+          bash -n runtime/checkpoint-status.sh
+          node --check runtime/native-relayer/index.mjs
 
       - name: Validate Docker Compose
         shell: bash
         run: |
           set -euo pipefail
-          cp runtime/.env.validator.example runtime/.env.validator
           cp runtime/.env.relayer.example runtime/.env.relayer
           docker compose -f runtime/docker-compose.yml config >/dev/null
-          cp runtime/.env.validator.beta.example runtime/.env.validator.beta
-          cp runtime/.env.relayer.beta.example runtime/.env.relayer.beta
-          docker compose -f runtime/docker-compose.beta.yml config >/dev/null

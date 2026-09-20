@@ -1,92 +1,109 @@
 # Architecture
 
-## Separation from the XGR node
+## XGR 3.0 native security
 
-Hyperlane is not compiled into the XGRChain node.
+Hyperlane remains the message transport layer, but XGR-origin security is native
+to XGR 3.0.
 
-The XGR node provides the EVM execution environment and JSON-RPC interface.
-Hyperlane adds an interoperability layer consisting of:
+The XGR node contains an isolated interchain worker. It is deliberately outside
+weighted-IBFT consensus-critical paths and cannot influence block production,
+validator voting power, epoch selection or weighted consensus.
 
-1. **Mailbox/Core contracts** on each chain;
-2. **ISM security modules** that define message verification;
-3. the XGR node's **native interchain worker**, which signs XGR-origin checkpoints with the validator's existing BLS key;
-4. an untrusted **attestation publisher** that may expose completed quorum attestations from node-local storage;
-5. a **relayer** that transports messages, Merkle proofs and quorum metadata;
-6. later, **Warp Route contracts** that implement the asset bridge;
-7. later, a user-facing **bridge UI**.
+For each configured destination, a validator is a valid native interchain signer
+only when:
 
-This is why the integration is maintained in this repository rather than in
-`xgr-node`.
+1. it is a member of the destination `XGRInterchainValidatorRegistry`;
+2. it is active in XGR staking; and
+3. its registry BLS identity matches its XGR staking BLS identity.
 
-## Initial route
+The interchain quorum is unweighted two-thirds of the destination registry set.
 
-- Canonical asset: native XGR on XGRChain
-- Destination representation: synthetic XGR on Base
-- XGRChain domain: 1643
-- Base domain: 8453
+## XGR-origin message path
 
-A traditional liquidity pool is not required for this lock/mint and burn/release
-model.
+1. a user dispatches through the existing XGR Hyperlane Mailbox;
+2. the configured MerkleTreeHook inserts the message ID;
+3. XGR 3.0 nodes read the hook root from one atomic local XGR state snapshot;
+4. the native interchain subset signs the destination-bound checkpoint;
+5. nodes aggregate a two-thirds BLS quorum;
+6. completed attestations are exposed through read-only
+   `xgr_getInterchainAttestation*` RPC;
+7. an untrusted relayer reconstructs the message Merkle proof and submits
+   metadata plus message to the destination Mailbox;
+8. `XGRNativeInterchainISM` verifies the current registry set, signer bitmap,
+   BLS aggregate signature and message inclusion;
+9. only then does the destination Mailbox deliver the message.
 
-## Current inbound security on XGRChain
+The relayer can withhold availability, but cannot forge acceptance.
 
-Base-origin verification is routed through an aggregation ISM with threshold 2.
+## Destination trust stack
 
-The required modules are:
+Each destination has its own:
 
-1. Hyperlane Base 3-of-5 Merkle-root multisig verification; and
-2. XGR's PausableIsm.
+- `XGRInterchainBLSVerifier`;
+- `XGRInterchainValidatorRegistry`;
+- `XGRNativeInterchainISM`.
 
-The PausableIsm is currently paused, so Base → XGR fails closed.
+The registry is the canonical membership state. The ISM does not duplicate the
+validator set.
 
-## Native checkpoint signer and trustless relayer
+### Bootstrap
 
-For XGR-origin native verification, the Hyperlane agent validator is not a trust
-anchor. The XGR node's isolated interchain worker reads the configured
-MerkleTreeHook from the local finalized XGR state and signs a deterministic,
-destination-bound checkpoint payload with the validator's existing XGR BLS key.
+The registry constructor receives the initial validator addresses, compressed
+XGR BLS keys, EIP-2537 keys, possession proofs and per-validator deactivation
+reserve.
 
-Only validators that are both active in XGR staking and members of the current
-destination interchain registry set may contribute checkpoint signatures. The
-worker aggregates an unweighted two-thirds quorum and writes the completed
-attestation to node-local storage.
+After bootstrap, ADD and REMOVE operations are authorized by the current
+registry set and increment `setId`.
 
-A publisher may copy these completed attestations to public-readable storage.
-The publisher is untrusted: modifying an attestation cannot create a valid BLS
-quorum proof.
+### Current-set verification
 
-The relayer watches XGRChain dispatch and MerkleTreeHook events, reconstructs the
-message and Merkle inclusion proof, obtains any valid public quorum attestation,
-and submits message plus metadata to the destination Mailbox. The destination
-ISM is authoritative. The relayer has no signing authority accepted by the ISM;
-a malicious relayer can only submit invalid data (which is rejected) or withhold
-delivery.
+Checkpoint verification uses the current destination registry `setId`.
+After a membership transition, XGR nodes autonomously attest the latest root
+again under the new set. Removed validators therefore cannot create newly
+accepted old-set attestations.
 
-The legacy Hyperlane validator runtime may remain useful for beta/legacy
-infrastructure, but it is not part of the native XGR-origin security model.
+## Hyperlane components retained
 
-## Warp Route
+The integration continues to use:
 
-The intended Warp Route will use native XGR on XGRChain and a synthetic XGR
-representation on Base. Router addresses are intentionally absent from the
-deployment manifest until the exact implementation has passed the security gate
-and been deployed.
+- Mailbox;
+- Hyperlane message encoding;
+- MerkleTreeHook;
+- Dispatch / Process semantics;
+- permissionless destination `Mailbox.process()`;
+- later, Warp route contracts and optional hook infrastructure.
 
-## UI contract
+The standard Hyperlane validator, ValidatorAnnounce checkpoint discovery and
+ECDSA multisig checkpoint security are not part of XGR-origin native security.
 
-The future bridge UI must derive live state rather than assume availability.
+## Native relayer
 
-At minimum it should display and track:
+`runtime/native-relayer` is intentionally untrusted. It:
 
-- source and destination chain;
-- route pause state;
-- router addresses from a published deployment manifest;
-- amount and token decimals;
-- approval requirement when applicable;
-- origin transaction hash;
-- Hyperlane message ID;
-- delivery state;
-- destination transaction hash.
+- indexes XGR Mailbox Dispatch events;
+- indexes the canonical XGR MerkleTreeHook leaves;
+- retrieves completed native attestations over XGR RPC;
+- reconstructs and locally checks the Merkle root;
+- builds the custom native ISM metadata;
+- submits `Mailbox.process()` on the destination.
 
-If a route is paused, incomplete or absent from the deployment manifest, the UI
-must render it unavailable.
+Its private key is only a destination gas payer.
+
+## Hook coverage
+
+Native verification can only prove messages inserted into the configured
+MerkleTreeHook. Before public launch, the XGR Mailbox deployment must ensure that
+the canonical MerkleTreeHook is necessarily executed for every supported
+dispatch path (preferably as the required hook), or the route must explicitly
+reject unsupported custom-hook dispatch paths.
+
+## Base -> XGR
+
+The existing Base-origin route on XGR is separate. It remains protected by the
+existing aggregation ISM including the deliberately paused PausableIsm until the
+inbound route is intentionally opened.
+
+## Warp route
+
+The intended first asset route is native XGR on XGRChain and synthetic XGR on
+Base. Router deployment remains separate from the native security layer.

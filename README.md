@@ -1,33 +1,46 @@
 # XGR.Network Hyperlane Integration
 
-Public deployment manifests, runtime configuration and operational documentation
-for the XGRChain ↔ Hyperlane integration.
+Public contracts, runtime configuration and operational documentation for the
+XGRChain native interchain security integration with Hyperlane transport.
 
-This repository is intentionally separate from
-[`xgr-network/xgr-node`](https://github.com/xgr-network/xgr-node). Hyperlane
-does **not** require a modification of the XGRChain node implementation. The
-integration consists of on-chain Hyperlane contracts plus off-chain validator
-and relayer services that communicate with XGRChain through standard EVM JSON-RPC.
+## XGR 3.0 architecture
+
+XGR 3.0 moves XGR-origin interchain security into the XGR node itself.
+
+The Hyperlane Mailbox and MerkleTreeHook remain the transport/message layer.
+XGR validators that explicitly opt into a destination form a native,
+destination-specific BLS validator subset. XGR nodes autonomously attest the
+configured Hyperlane Merkle root and expose only completed quorum attestations
+through read-only XGR JSON-RPC.
+
+The relayer is not a trust anchor. It reconstructs a Hyperlane message inclusion
+proof, retrieves a completed XGR BLS attestation, and submits both to the
+destination Mailbox. The destination XGR native ISM independently verifies the
+current registry set, unweighted two-thirds quorum, BLS aggregate signature and
+Merkle inclusion proof.
 
 ## Current status
 
-The XGRChain Hyperlane Core is deployed on XGRChain mainnet (chain/domain 1643).
-The intended first asset route is native XGR on XGRChain ↔ synthetic XGR on Base.
+- XGRChain mainnet chain/domain: `1643`
+- XGR 3.0 native interchain node support: deployed
+- XGRChain Hyperlane Core: deployed
+- first destination: Base (`8453`)
+- Base native XGR registry / verifier / ISM: pre-deployment
+- user-facing bridge: not open
 
-The route is **not open for users yet**.
-
-Base-origin verification on XGRChain currently includes a deliberately paused
-PausableIsm. This keeps the route fail-closed while validator/relayer
-infrastructure, Base-side contracts and bounded end-to-end tests are completed.
+Base-origin verification on XGRChain remains fail-closed while the reverse
+direction and final Warp route are completed.
 
 ## Repository layout
 
-- `deployments/` — verified on-chain deployment manifests and route state
-- `runtime/` — reproducible validator/relayer Docker runtime
-- `docs/` — architecture, operations and rollout documentation
-- `.github/workflows/` — validation and controlled beta deployment workflows
+- `contracts/` — destination registry, BLS verifier and native XGR ISM
+- `test/` — Foundry contract tests
+- `deployments/` — verified deployment manifests and route state
+- `runtime/` — trustless native relayer runtime
+- `docs/` — architecture and operations
+- `.github/workflows/` — validation workflows
 
-## Main XGRChain contracts
+## Existing XGRChain contracts
 
 | Component | Address |
 | --- | --- |
@@ -38,32 +51,29 @@ infrastructure, Base-side contracts and bounded end-to-end tests are completed.
 | PausableIsm | `0x1175F84765CFeA514ea1fd75162CFE8a6C64d4CA` |
 | Base route aggregation ISM | `0x320e8501677532cc1f5c5bb7990b6db72c627b6c` |
 
-See `deployments/xgrchain-mainnet.json` for transaction evidence and
-`deployments/xgr-base-route.json` for the current route security state.
+`ValidatorAnnounce` remains deployed for compatibility/history but is not part
+of XGR-origin native security.
 
-## Runtime
+## Native destination contracts
 
-The off-chain runtime is pinned to Hyperlane agent `2.3.0`.
+The XGR-origin destination stack consists of:
 
-Two modes are maintained:
+1. `XGRInterchainBLSVerifier`
+2. `XGRInterchainValidatorRegistry`
+3. `XGRNativeInterchainISM`
 
-- **beta** — validator and relayer may share local checkpoint storage on one
-  controlled host while the route remains fail-closed;
-- **production** — validator checkpoints are published to public-readable remote
-  storage so independent relayers can retrieve them.
-
-Private keys, SSH credentials, cloud credentials and populated environment files
-must never be committed.
+The registry receives the initial validator set during deployment. The ISM stores
+only the immutable registry and XGR origin context; subsequent validator changes
+are read from the registry automatically.
 
 ## Security state
 
-The current route remains deliberately paused. Do not treat the presence of
-deployed contracts as evidence that the bridge is live.
+The bridge remains prelaunch until the destination contracts are deployed,
+bootstrapped, the native relayer passes a live XGR -> Base message test, and the
+Warp route has passed its launch gates.
 
-Native-XGR Warp custody is also deferred while Hyperlane issue
-[`#8589`](https://github.com/hyperlane-xyz/hyperlane-monorepo/issues/8589)
-remains unresolved or until the exact pinned implementation is independently
-shown not to be affected.
+Private keys, populated environment files and deployment secrets must never be
+committed.
 
 ## Documentation
 

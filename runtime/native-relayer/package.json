@@ -1,0 +1,9 @@
+{
+  "name": "xgr-native-hyperlane-relayer",
+  "private": true,
+  "version": "3.0.0",
+  "type": "module",
+  "dependencies": {
+    "ethers": "6.13.4"
+  }
+}
