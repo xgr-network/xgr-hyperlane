@@ -79,8 +79,9 @@ contract XGRInterchainBLSVerifier is IXGRInterchainBLSVerifier {
         bytes memory messagePoint,
         bytes calldata aggregateSignature
     ) internal view returns (bool) {
-        bytes memory pairingInput =
-            bytes.concat(aggregatePublicKey, messagePoint, NEGATED_G1_GENERATOR, aggregateSignature);
+        bytes memory leftPair = bytes.concat(aggregatePublicKey, messagePoint);
+        bytes memory rightPair = bytes.concat(NEGATED_G1_GENERATOR, aggregateSignature);
+        bytes memory pairingInput = bytes.concat(leftPair, rightPair);
         (bool pairingOK, bytes memory pairingResult) = BLS12_PAIRING.staticcall(pairingInput);
         return pairingOK && pairingResult.length == 32 && uint256(bytes32(pairingResult)) == 1;
     }
@@ -122,15 +123,15 @@ contract XGRInterchainBLSVerifier is IXGRInterchainBLSVerifier {
     }
 
     function _expandMessageXmd(bytes calldata message) internal pure returns (bytes memory uniform) {
-        bytes memory dstPrime = abi.encodePacked(BLS_SIGNATURE_DST, uint8(BLS_SIGNATURE_DST.length));
-        bytes32 b0 = sha256(
-            abi.encodePacked(new bytes(64), message, uint16(256), uint8(0), dstPrime)
-        );
-        bytes32 bi = sha256(abi.encodePacked(b0, uint8(1), dstPrime));
+        bytes memory dstPrime = bytes.concat(BLS_SIGNATURE_DST, abi.encodePacked(uint8(BLS_SIGNATURE_DST.length)));
+        bytes memory xmdPrefix = bytes.concat(new bytes(64), bytes(message));
+        bytes memory xmdLength = abi.encodePacked(uint16(256), uint8(0));
+        bytes32 b0 = sha256(bytes.concat(xmdPrefix, xmdLength, dstPrime));
+        bytes32 bi = sha256(bytes.concat(abi.encodePacked(b0, uint8(1)), dstPrime));
 
         uniform = abi.encodePacked(bi);
         for (uint8 i = 2; i <= 8; i++) {
-            bi = sha256(abi.encodePacked(b0 ^ bi, i, dstPrime));
+            bi = sha256(bytes.concat(abi.encodePacked(b0 ^ bi, i), dstPrime));
             uniform = bytes.concat(uniform, abi.encodePacked(bi));
         }
     }
@@ -143,8 +144,9 @@ contract XGRInterchainBLSVerifier is IXGRInterchainBLSVerifier {
             base[i] = uniform[offset + i];
         }
 
-        bytes memory input =
-            abi.encodePacked(uint256(64), uint256(32), uint256(64), base, uint256(1), BLS_PRIME);
+        bytes memory modexpLengths = abi.encode(uint256(64), uint256(32), uint256(64));
+        bytes memory exponent = abi.encode(uint256(1));
+        bytes memory input = bytes.concat(modexpLengths, base, exponent, BLS_PRIME);
         (bool ok, bytes memory out) = MODEXP.staticcall(input);
         if (!ok || out.length != 64) return (false, bytes(""));
         return (true, out);
