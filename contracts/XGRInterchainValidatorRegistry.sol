@@ -22,6 +22,7 @@ contract XGRInterchainValidatorRegistry {
     uint256 private constant BLS_PUBLIC_KEY_LENGTH = 48;
     uint256 private constant BLS_PUBLIC_KEY_EIP2537_LENGTH = 128;
     uint256 private constant EXECUTOR_GAS_OVERHEAD = 35_000;
+    uint256 private constant MAX_MEMBERSHIP_VALIDITY = 10 minutes;
 
     struct Validator {
         bool active;
@@ -227,9 +228,7 @@ contract XGRInterchainValidatorRegistry {
             revert InvalidTransition();
         }
 
-        unchecked {
-            setId += 1;
-        }
+        setId += 1;
     }
 
     function _verifyMembershipTransition(
@@ -238,7 +237,11 @@ contract XGRInterchainValidatorRegistry {
         bytes calldata aggregateSignature
     ) internal view {
         if (transition.expectedSetId != setId) revert StaleSetId(setId, transition.expectedSetId);
-        if (transition.validUntil == 0 || block.timestamp > transition.validUntil) revert InvalidTransition();
+        if (
+            transition.validUntil == 0 ||
+            block.timestamp > transition.validUntil ||
+            transition.validUntil > block.timestamp + MAX_MEMBERSHIP_VALIDITY
+        ) revert InvalidTransition();
         if (
             transition.validator == address(0) ||
             transition.blsPublicKey.length != BLS_PUBLIC_KEY_LENGTH ||
@@ -356,7 +359,7 @@ contract XGRInterchainValidatorRegistry {
     }
 
     function _applyRemove(MembershipTransition calldata transition, uint256 gasStart) internal {
-        if (msg.value != 0) revert InvalidTransition();
+        if (msg.value != 0 || activeValidators.length <= 1) revert InvalidTransition();
 
         Validator storage v = validatorInfo[transition.validator];
         if (
