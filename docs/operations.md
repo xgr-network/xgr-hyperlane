@@ -24,10 +24,18 @@ Local checkpoint storage is not the production architecture.
 
 ## Production checkpoint publication
 
-Before public operation, validator checkpoints must be published to
-public-readable remote storage. The production template uses S3-compatible
-Hyperlane configuration where validator writes are authenticated and relayer
-reads are public.
+For the native XGR-origin path, the XGR node writes completed BLS quorum
+attestations below its local `interchain/attestations/<destination>/` directory.
+Before public operation, a separate untrusted publisher must mirror those files
+to public-readable storage (for example S3-compatible object storage or HTTPS).
+
+The publisher does not sign and is not trusted by the ISM. Relayers may consume
+an attestation from any publisher or validator endpoint because the destination
+ISM independently verifies the validator set, signer bitmap, BLS aggregate
+signature and Merkle proof.
+
+The older Hyperlane-validator checkpoint-sync configuration belongs to the
+legacy/beta path and must not be treated as the native XGR-origin trust anchor.
 
 ## Secrets
 
