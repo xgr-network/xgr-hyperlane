@@ -472,7 +472,10 @@ contract XGRInterchainValidatorRegistry {
         pure
         returns (bool)
     {
-        if (validatorCount == 0 || threshold == 0) return false;
+        if (validatorCount == 0 || threshold == 0 || bitmap.length == 0) return false;
+        uint256 maxBitmapLength = (validatorCount + 7) / 8;
+        if (bitmap.length > maxBitmapLength || bitmap[0] == bytes1(0)) return false;
+
         uint256 count;
         for (uint256 i = 0; i < validatorCount; i++) {
             uint256 byteFromEnd = i >> 3;
