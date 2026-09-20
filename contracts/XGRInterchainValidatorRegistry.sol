@@ -20,11 +20,13 @@ contract XGRInterchainValidatorRegistry {
     bytes private constant DOMAIN_V2 = "XGR_INTERCHAIN_V2";
     bytes private constant BOOTSTRAP_DOMAIN_V1 = "XGR_INTERCHAIN_BOOTSTRAP_V1";
     uint256 private constant BLS_PUBLIC_KEY_LENGTH = 48;
+    uint256 private constant BLS_PUBLIC_KEY_EIP2537_LENGTH = 128;
     uint256 private constant EXECUTOR_GAS_OVERHEAD = 35_000;
 
     struct Validator {
         bool active;
         bytes blsPublicKey;
+        bytes blsPublicKeyEIP2537;
         uint256 deactivationReserveWei;
     }
 
@@ -63,6 +65,7 @@ contract XGRInterchainValidatorRegistry {
         uint256 maxExecutorReimbursementWei_,
         address[] memory initialValidators_,
         bytes[] memory initialBLSPublicKeys_,
+        bytes[] memory initialBLSPublicKeysEIP2537_,
         bytes[] memory initialBLSPossessionProofs_
     ) payable {
         if (
@@ -72,6 +75,7 @@ contract XGRInterchainValidatorRegistry {
             minimumDeactivationReserveWei_ < maxExecutorReimbursementWei_ ||
             initialValidators_.length == 0 ||
             initialValidators_.length != initialBLSPublicKeys_.length ||
+            initialValidators_.length != initialBLSPublicKeysEIP2537_.length ||
             initialValidators_.length != initialBLSPossessionProofs_.length
         ) revert InvalidBootstrap();
 
@@ -91,6 +95,7 @@ contract XGRInterchainValidatorRegistry {
                 destinationDomain_,
                 initialValidators_[i],
                 initialBLSPublicKeys_[i],
+                initialBLSPublicKeysEIP2537_[i],
                 initialBLSPossessionProofs_[i],
                 reservePerValidator
             );
@@ -104,6 +109,7 @@ contract XGRInterchainValidatorRegistry {
         uint32 destinationDomain_,
         address validator,
         bytes memory blsKey,
+        bytes memory blsKeyEIP2537,
         bytes memory possessionProof,
         uint256 reservePerValidator
     ) internal {
@@ -111,16 +117,17 @@ contract XGRInterchainValidatorRegistry {
         if (
             validator == address(0) ||
             blsKey.length != BLS_PUBLIC_KEY_LENGTH ||
+            blsKeyEIP2537.length != BLS_PUBLIC_KEY_EIP2537_LENGTH ||
             activeIndexPlusOne[validator] != 0 ||
             activeBLSKeyOwner[keyHash] != address(0) ||
             possessionProof.length == 0
         ) revert InvalidBootstrap();
 
         bytes[] memory bootstrapKeys = new bytes[](1);
-        bootstrapKeys[0] = blsKey;
+        bootstrapKeys[0] = blsKeyEIP2537;
         if (
             !verifier.verify(
-                encodeBootstrapPayload(originChainId_, destinationDomain_, validator, blsKey),
+                encodeBootstrapPayload(originChainId_, destinationDomain_, validator, blsKey, blsKeyEIP2537),
                 bootstrapKeys,
                 hex"01",
                 possessionProof
@@ -130,6 +137,7 @@ contract XGRInterchainValidatorRegistry {
         validatorInfo[validator] = Validator({
             active: true,
             blsPublicKey: blsKey,
+            blsPublicKeyEIP2537: blsKeyEIP2537,
             deactivationReserveWei: reservePerValidator
         });
         activeValidators.push(validator);
@@ -199,15 +207,18 @@ contract XGRInterchainValidatorRegistry {
         uint8 action,
         address validator,
         bytes calldata validatorBLSPublicKey,
+        bytes calldata validatorBLSPublicKeyEIP2537,
         bytes calldata signerBitmap,
         bytes calldata aggregateSignature
     ) external payable {
         uint256 gasStart = gasleft();
         if (expectedSetId != setId) revert StaleSetId(setId, expectedSetId);
         if (validUntil == 0 || block.timestamp > validUntil) revert InvalidTransition();
-        if (validator == address(0) || validatorBLSPublicKey.length != BLS_PUBLIC_KEY_LENGTH) {
-            revert InvalidTransition();
-        }
+        if (
+            validator == address(0) ||
+            validatorBLSPublicKey.length != BLS_PUBLIC_KEY_LENGTH ||
+            validatorBLSPublicKeyEIP2537.length != BLS_PUBLIC_KEY_EIP2537_LENGTH
+        ) revert InvalidTransition();
 
         bytes memory message = encodeMembershipPayload(
             originChainId,
@@ -216,12 +227,13 @@ contract XGRInterchainValidatorRegistry {
             validUntil,
             action,
             validator,
-            validatorBLSPublicKey
+            validatorBLSPublicKey,
+            validatorBLSPublicKeyEIP2537
         );
 
         bytes[] memory currentKeys = new bytes[](activeValidators.length);
         for (uint256 i = 0; i < activeValidators.length; i++) {
-            currentKeys[i] = validatorInfo[activeValidators[i]].blsPublicKey;
+            currentKeys[i] = validatorInfo[activeValidators[i]].blsPublicKeyEIP2537;
         }
 
         if (!_bitmapHasQuorum(signerBitmap, activeValidators.length, quorumThreshold())) {
@@ -232,9 +244,9 @@ contract XGRInterchainValidatorRegistry {
         }
 
         if (action == ACTION_ADD) {
-            _applyAdd(validator, validatorBLSPublicKey);
+            _applyAdd(validator, validatorBLSPublicKey, validatorBLSPublicKeyEIP2537);
         } else if (action == ACTION_REMOVE) {
-            _applyRemove(validator, validatorBLSPublicKey, gasStart);
+            _applyRemove(validator, validatorBLSPublicKey, validatorBLSPublicKeyEIP2537, gasStart);
         } else {
             revert InvalidTransition();
         }
@@ -251,7 +263,8 @@ contract XGRInterchainValidatorRegistry {
         uint64 validUntil,
         uint8 action,
         address validator,
-        bytes memory validatorBLSPublicKey
+        bytes memory validatorBLSPublicKey,
+        bytes memory validatorBLSPublicKeyEIP2537
     ) public pure returns (bytes memory) {
         if (
             originChainId_ == 0 ||
@@ -259,7 +272,8 @@ contract XGRInterchainValidatorRegistry {
             validUntil == 0 ||
             (action != ACTION_ADD && action != ACTION_REMOVE) ||
             validator == address(0) ||
-            validatorBLSPublicKey.length != BLS_PUBLIC_KEY_LENGTH
+            validatorBLSPublicKey.length != BLS_PUBLIC_KEY_LENGTH ||
+            validatorBLSPublicKeyEIP2537.length != BLS_PUBLIC_KEY_EIP2537_LENGTH
         ) revert InvalidTransition();
 
         return abi.encodePacked(
@@ -271,7 +285,9 @@ contract XGRInterchainValidatorRegistry {
             bytes1(action),
             bytes20(validator),
             bytes2(uint16(validatorBLSPublicKey.length)),
-            validatorBLSPublicKey
+            validatorBLSPublicKey,
+            bytes2(uint16(validatorBLSPublicKeyEIP2537.length)),
+            validatorBLSPublicKeyEIP2537
         );
     }
 
@@ -279,13 +295,15 @@ contract XGRInterchainValidatorRegistry {
         uint64 originChainId_,
         uint32 destinationDomain_,
         address validator,
-        bytes memory validatorBLSPublicKey
+        bytes memory validatorBLSPublicKey,
+        bytes memory validatorBLSPublicKeyEIP2537
     ) public pure returns (bytes memory) {
         if (
             originChainId_ == 0 ||
             destinationDomain_ == 0 ||
             validator == address(0) ||
-            validatorBLSPublicKey.length != BLS_PUBLIC_KEY_LENGTH
+            validatorBLSPublicKey.length != BLS_PUBLIC_KEY_LENGTH ||
+            validatorBLSPublicKeyEIP2537.length != BLS_PUBLIC_KEY_EIP2537_LENGTH
         ) revert InvalidBootstrap();
 
         return abi.encodePacked(
@@ -294,11 +312,17 @@ contract XGRInterchainValidatorRegistry {
             bytes4(destinationDomain_),
             bytes20(validator),
             bytes2(uint16(validatorBLSPublicKey.length)),
-            validatorBLSPublicKey
+            validatorBLSPublicKey,
+            bytes2(uint16(validatorBLSPublicKeyEIP2537.length)),
+            validatorBLSPublicKeyEIP2537
         );
     }
 
-    function _applyAdd(address validator, bytes calldata validatorBLSPublicKey) internal {
+    function _applyAdd(
+        address validator,
+        bytes calldata validatorBLSPublicKey,
+        bytes calldata validatorBLSPublicKeyEIP2537
+    ) internal {
         bytes32 keyHash = keccak256(validatorBLSPublicKey);
         if (
             validatorInfo[validator].active ||
@@ -312,6 +336,7 @@ contract XGRInterchainValidatorRegistry {
         validatorInfo[validator] = Validator({
             active: true,
             blsPublicKey: validatorBLSPublicKey,
+            blsPublicKeyEIP2537: validatorBLSPublicKeyEIP2537,
             deactivationReserveWei: msg.value
         });
         activeValidators.push(validator);
@@ -324,14 +349,17 @@ contract XGRInterchainValidatorRegistry {
     function _applyRemove(
         address validator,
         bytes calldata validatorBLSPublicKey,
+        bytes calldata validatorBLSPublicKeyEIP2537,
         uint256 gasStart
     ) internal {
         if (msg.value != 0) revert InvalidTransition();
 
         Validator storage v = validatorInfo[validator];
-        if (!v.active || keccak256(v.blsPublicKey) != keccak256(validatorBLSPublicKey)) {
-            revert InvalidTransition();
-        }
+        if (
+            !v.active ||
+            keccak256(v.blsPublicKey) != keccak256(validatorBLSPublicKey) ||
+            keccak256(v.blsPublicKeyEIP2537) != keccak256(validatorBLSPublicKeyEIP2537)
+        ) revert InvalidTransition();
 
         uint256 indexPlusOne = activeIndexPlusOne[validator];
         if (indexPlusOne == 0) revert InvalidTransition();
