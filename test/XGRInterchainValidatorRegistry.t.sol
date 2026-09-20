@@ -106,6 +106,31 @@ contract XGRInterchainValidatorRegistryTest is Test {
         assertEq(reserve, MIN_RESERVE);
     }
 
+    function testInitialValidatorSetCommitmentMatchesPublishedSet() public view {
+        (address[] memory validators, bytes[] memory keys, uint64 currentSetId) = registry.getValidatorSetEIP2537();
+        bytes32 expected = registry.computeValidatorSetCommitment(validators, keys);
+        assertEq(registry.validatorSetCommitment(currentSetId), expected);
+    }
+
+    function testHistoricalValidatorSetCommitmentSurvivesTransition() public {
+        bytes32 set1 = registry.validatorSetCommitment(1);
+
+        registry.applyMembership{value: MIN_RESERVE}(
+            _transition(1, D, BLS_D, EIP_D),
+            hex"03",
+            hex"1234"
+        );
+
+        (address[] memory validators, bytes[] memory keys, uint64 currentSetId) = registry.getValidatorSetEIP2537();
+        assertEq(currentSetId, 2);
+        assertEq(registry.validatorSetCommitment(1), set1);
+        assertEq(
+            registry.validatorSetCommitment(2),
+            registry.computeValidatorSetCommitment(validators, keys)
+        );
+        assertTrue(registry.validatorSetCommitment(2) != set1);
+    }
+
     function testEIP2537ValidatorSetView() public view {
         (address[] memory validators, bytes[] memory keys, uint64 setId) = registry.getValidatorSetEIP2537();
         assertEq(validators.length, 3);
