@@ -30,6 +30,15 @@ contract XGRInterchainValidatorRegistry {
         uint256 deactivationReserveWei;
     }
 
+    struct MembershipTransition {
+        uint64 expectedSetId;
+        uint64 validUntil;
+        uint8 action;
+        address validator;
+        bytes blsPublicKey;
+        bytes blsPublicKeyEIP2537;
+    }
+
     uint64 public immutable originChainId;
     uint32 public immutable destinationDomain;
     uint256 public immutable minimumDeactivationReserveWei;
@@ -212,23 +221,52 @@ contract XGRInterchainValidatorRegistry {
         bytes calldata aggregateSignature
     ) external payable {
         uint256 gasStart = gasleft();
-        if (expectedSetId != setId) revert StaleSetId(setId, expectedSetId);
-        if (validUntil == 0 || block.timestamp > validUntil) revert InvalidTransition();
+        MembershipTransition memory transition = MembershipTransition({
+            expectedSetId: expectedSetId,
+            validUntil: validUntil,
+            action: action,
+            validator: validator,
+            blsPublicKey: validatorBLSPublicKey,
+            blsPublicKeyEIP2537: validatorBLSPublicKeyEIP2537
+        });
+
+        _verifyMembershipTransition(transition, signerBitmap, aggregateSignature);
+
+        if (transition.action == ACTION_ADD) {
+            _applyAdd(transition);
+        } else if (transition.action == ACTION_REMOVE) {
+            _applyRemove(transition, gasStart);
+        } else {
+            revert InvalidTransition();
+        }
+
+        unchecked {
+            setId += 1;
+        }
+    }
+
+    function _verifyMembershipTransition(
+        MembershipTransition memory transition,
+        bytes calldata signerBitmap,
+        bytes calldata aggregateSignature
+    ) internal view {
+        if (transition.expectedSetId != setId) revert StaleSetId(setId, transition.expectedSetId);
+        if (transition.validUntil == 0 || block.timestamp > transition.validUntil) revert InvalidTransition();
         if (
-            validator == address(0) ||
-            validatorBLSPublicKey.length != BLS_PUBLIC_KEY_LENGTH ||
-            validatorBLSPublicKeyEIP2537.length != BLS_PUBLIC_KEY_EIP2537_LENGTH
+            transition.validator == address(0) ||
+            transition.blsPublicKey.length != BLS_PUBLIC_KEY_LENGTH ||
+            transition.blsPublicKeyEIP2537.length != BLS_PUBLIC_KEY_EIP2537_LENGTH
         ) revert InvalidTransition();
 
         bytes memory message = encodeMembershipPayload(
             originChainId,
             destinationDomain,
-            expectedSetId,
-            validUntil,
-            action,
-            validator,
-            validatorBLSPublicKey,
-            validatorBLSPublicKeyEIP2537
+            transition.expectedSetId,
+            transition.validUntil,
+            transition.action,
+            transition.validator,
+            transition.blsPublicKey,
+            transition.blsPublicKeyEIP2537
         );
 
         bytes[] memory currentKeys = new bytes[](activeValidators.length);
@@ -241,18 +279,6 @@ contract XGRInterchainValidatorRegistry {
         }
         if (!verifier.verify(message, currentKeys, signerBitmap, aggregateSignature)) {
             revert InsufficientQuorum();
-        }
-
-        if (action == ACTION_ADD) {
-            _applyAdd(validator, validatorBLSPublicKey, validatorBLSPublicKeyEIP2537);
-        } else if (action == ACTION_REMOVE) {
-            _applyRemove(validator, validatorBLSPublicKey, validatorBLSPublicKeyEIP2537, gasStart);
-        } else {
-            revert InvalidTransition();
-        }
-
-        unchecked {
-            setId += 1;
         }
     }
 
@@ -318,50 +344,41 @@ contract XGRInterchainValidatorRegistry {
         );
     }
 
-    function _applyAdd(
-        address validator,
-        bytes calldata validatorBLSPublicKey,
-        bytes calldata validatorBLSPublicKeyEIP2537
-    ) internal {
-        bytes32 keyHash = keccak256(validatorBLSPublicKey);
+    function _applyAdd(MembershipTransition memory transition) internal {
+        bytes32 keyHash = keccak256(transition.blsPublicKey);
         if (
-            validatorInfo[validator].active ||
-            activeIndexPlusOne[validator] != 0 ||
+            validatorInfo[transition.validator].active ||
+            activeIndexPlusOne[transition.validator] != 0 ||
             activeBLSKeyOwner[keyHash] != address(0)
         ) revert InvalidTransition();
         if (msg.value < minimumDeactivationReserveWei) {
             revert InsufficientReserve(minimumDeactivationReserveWei, msg.value);
         }
 
-        validatorInfo[validator] = Validator({
+        validatorInfo[transition.validator] = Validator({
             active: true,
-            blsPublicKey: validatorBLSPublicKey,
-            blsPublicKeyEIP2537: validatorBLSPublicKeyEIP2537,
+            blsPublicKey: transition.blsPublicKey,
+            blsPublicKeyEIP2537: transition.blsPublicKeyEIP2537,
             deactivationReserveWei: msg.value
         });
-        activeValidators.push(validator);
-        activeIndexPlusOne[validator] = activeValidators.length;
-        activeBLSKeyOwner[keyHash] = validator;
+        activeValidators.push(transition.validator);
+        activeIndexPlusOne[transition.validator] = activeValidators.length;
+        activeBLSKeyOwner[keyHash] = transition.validator;
 
-        emit ValidatorAdded(validator, setId + 1, msg.value);
+        emit ValidatorAdded(transition.validator, setId + 1, msg.value);
     }
 
-    function _applyRemove(
-        address validator,
-        bytes calldata validatorBLSPublicKey,
-        bytes calldata validatorBLSPublicKeyEIP2537,
-        uint256 gasStart
-    ) internal {
+    function _applyRemove(MembershipTransition memory transition, uint256 gasStart) internal {
         if (msg.value != 0) revert InvalidTransition();
 
-        Validator storage v = validatorInfo[validator];
+        Validator storage v = validatorInfo[transition.validator];
         if (
             !v.active ||
-            keccak256(v.blsPublicKey) != keccak256(validatorBLSPublicKey) ||
-            keccak256(v.blsPublicKeyEIP2537) != keccak256(validatorBLSPublicKeyEIP2537)
+            keccak256(v.blsPublicKey) != keccak256(transition.blsPublicKey) ||
+            keccak256(v.blsPublicKeyEIP2537) != keccak256(transition.blsPublicKeyEIP2537)
         ) revert InvalidTransition();
 
-        uint256 indexPlusOne = activeIndexPlusOne[validator];
+        uint256 indexPlusOne = activeIndexPlusOne[transition.validator];
         if (indexPlusOne == 0) revert InvalidTransition();
 
         uint256 last = activeValidators.length;
@@ -372,8 +389,8 @@ contract XGRInterchainValidatorRegistry {
             activeIndexPlusOne[moved] = index + 1;
         }
         activeValidators.pop();
-        delete activeIndexPlusOne[validator];
-        delete activeBLSKeyOwner[keccak256(validatorBLSPublicKey)];
+        delete activeIndexPlusOne[transition.validator];
+        delete activeBLSKeyOwner[keccak256(transition.blsPublicKey)];
 
         uint256 reserve = v.deactivationReserveWei;
         v.active = false;
@@ -395,10 +412,10 @@ contract XGRInterchainValidatorRegistry {
             claimableWei[msg.sender] += reimbursement;
         }
         if (remainder != 0) {
-            claimableWei[validator] += remainder;
+            claimableWei[transition.validator] += remainder;
         }
 
-        emit ValidatorRemoved(validator, setId + 1, msg.sender, reimbursement);
+        emit ValidatorRemoved(transition.validator, setId + 1, msg.sender, reimbursement);
     }
 
     function _bitmapHasQuorum(bytes calldata bitmap, uint256 validatorCount, uint256 threshold)
