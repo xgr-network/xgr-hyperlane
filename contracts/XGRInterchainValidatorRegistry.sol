@@ -53,6 +53,7 @@ contract XGRInterchainValidatorRegistry {
     mapping(address => uint256) private activeIndexPlusOne;
     mapping(bytes32 => address) private activeBLSKeyOwner;
     mapping(address => uint256) public claimableWei;
+    mapping(uint64 => bytes32) public validatorSetCommitment;
 
     error InvalidBootstrap();
     error InvalidTransition();
@@ -66,6 +67,7 @@ contract XGRInterchainValidatorRegistry {
     event ValidatorRemoved(address indexed validator, uint64 indexed setId, address indexed executor, uint256 reimbursementWei);
     event ReserveIncreased(address indexed validator, uint256 amountWei, uint256 newReserveWei);
     event Claimed(address indexed account, uint256 amountWei);
+    event ValidatorSetCommitted(uint64 indexed setId, bytes32 indexed commitment);
 
     constructor(
         uint64 originChainId_,
@@ -112,6 +114,7 @@ contract XGRInterchainValidatorRegistry {
         }
 
         setId = 1;
+        _commitValidatorSet();
     }
 
     function _bootstrapValidator(
@@ -233,15 +236,21 @@ contract XGRInterchainValidatorRegistry {
 
         _verifyMembershipTransition(transition, signerBitmap, aggregateSignature);
 
+        uint256 removedReserve;
         if (transition.action == ACTION_ADD) {
             _applyAdd(transition);
         } else if (transition.action == ACTION_REMOVE) {
-            _applyRemove(transition, gasStart);
+            removedReserve = _applyRemove(transition);
         } else {
             revert InvalidTransition();
         }
 
         setId += 1;
+        _commitValidatorSet();
+
+        if (transition.action == ACTION_REMOVE) {
+            _settleRemoval(transition.validator, removedReserve, gasStart);
+        }
     }
 
     function _verifyMembershipTransition(
@@ -347,6 +356,26 @@ contract XGRInterchainValidatorRegistry {
         );
     }
 
+    function computeValidatorSetCommitment(
+        address[] memory validators,
+        bytes[] memory blsPublicKeysEIP2537
+    ) public pure returns (bytes32) {
+        if (validators.length == 0 || validators.length != blsPublicKeysEIP2537.length) {
+            revert InvalidTransition();
+        }
+        return keccak256(abi.encode(validators, blsPublicKeysEIP2537));
+    }
+
+    function _commitValidatorSet() internal {
+        bytes[] memory keys = new bytes[](activeValidators.length);
+        for (uint256 i = 0; i < activeValidators.length; i++) {
+            keys[i] = validatorInfo[activeValidators[i]].blsPublicKeyEIP2537;
+        }
+        bytes32 commitment = computeValidatorSetCommitment(activeValidators, keys);
+        validatorSetCommitment[setId] = commitment;
+        emit ValidatorSetCommitted(setId, commitment);
+    }
+
     function _applyAdd(MembershipTransition calldata transition) internal {
         bytes32 keyHash = keccak256(transition.blsPublicKey);
         if (
@@ -371,7 +400,7 @@ contract XGRInterchainValidatorRegistry {
         emit ValidatorAdded(transition.validator, setId + 1, msg.value);
     }
 
-    function _applyRemove(MembershipTransition calldata transition, uint256 gasStart) internal {
+    function _applyRemove(MembershipTransition calldata transition) internal returns (uint256 reserve) {
         if (msg.value != 0 || activeValidators.length <= 1) revert InvalidTransition();
 
         Validator storage v = validatorInfo[transition.validator];
@@ -395,10 +424,12 @@ contract XGRInterchainValidatorRegistry {
         delete activeIndexPlusOne[transition.validator];
         delete activeBLSKeyOwner[keccak256(transition.blsPublicKey)];
 
-        uint256 reserve = v.deactivationReserveWei;
+        reserve = v.deactivationReserveWei;
         v.active = false;
         v.deactivationReserveWei = 0;
+    }
 
+    function _settleRemoval(address validator, uint256 reserve, uint256 gasStart) internal {
         uint256 measuredGas = gasStart - gasleft() + EXECUTOR_GAS_OVERHEAD;
         uint256 reimbursement = measuredGas * tx.gasprice;
         if (reimbursement > maxExecutorReimbursementWei) {
@@ -415,10 +446,10 @@ contract XGRInterchainValidatorRegistry {
             claimableWei[msg.sender] += reimbursement;
         }
         if (remainder != 0) {
-            claimableWei[transition.validator] += remainder;
+            claimableWei[validator] += remainder;
         }
 
-        emit ValidatorRemoved(transition.validator, setId + 1, msg.sender, reimbursement);
+        emit ValidatorRemoved(validator, setId, msg.sender, reimbursement);
     }
 
     function _bitmapHasQuorum(bytes calldata bitmap, uint256 validatorCount, uint256 threshold)
