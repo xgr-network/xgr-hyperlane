@@ -16,4 +16,6 @@ interface IXGRInterchainValidatorSet {
         external
         view
         returns (address[] memory validators, bytes[] memory blsPublicKeysEIP2537, uint64 setId);
+
+    function validatorSetCommitment(uint64 setId) external view returns (bytes32);
 }
