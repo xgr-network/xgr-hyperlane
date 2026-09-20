@@ -88,12 +88,7 @@ contract XGRInterchainValidatorRegistryTest is Test {
 
     function testAddRequiresQuorumAndLocksReserve() public {
         registry.applyMembership{value: MIN_RESERVE}(
-            1,
-            deadline,
-            1,
-            D,
-            BLS_D,
-            EIP_D,
+            _transition(1, D, BLS_D, EIP_D),
             hex"03",
             hex"1234"
         );
@@ -109,12 +104,7 @@ contract XGRInterchainValidatorRegistryTest is Test {
     function testOneOfThreeCannotAdd() public {
         vm.expectRevert(XGRInterchainValidatorRegistry.InsufficientQuorum.selector);
         registry.applyMembership{value: MIN_RESERVE}(
-            1,
-            deadline,
-            1,
-            D,
-            BLS_D,
-            EIP_D,
+            _transition(1, D, BLS_D, EIP_D),
             hex"01",
             hex"1234"
         );
@@ -123,12 +113,7 @@ contract XGRInterchainValidatorRegistryTest is Test {
     function testBitmapOutsideCurrentSetCannotIncreaseQuorum() public {
         vm.expectRevert(XGRInterchainValidatorRegistry.InsufficientQuorum.selector);
         registry.applyMembership{value: MIN_RESERVE}(
-            1,
-            deadline,
-            1,
-            D,
-            BLS_D,
-            EIP_D,
+            _transition(1, D, BLS_D, EIP_D),
             hex"83",
             hex"1234"
         );
@@ -138,12 +123,7 @@ contract XGRInterchainValidatorRegistryTest is Test {
         verifier.setResult(false);
         vm.expectRevert(XGRInterchainValidatorRegistry.InsufficientQuorum.selector);
         registry.applyMembership{value: MIN_RESERVE}(
-            1,
-            deadline,
-            1,
-            D,
-            BLS_D,
-            EIP_D,
+            _transition(1, D, BLS_D, EIP_D),
             hex"03",
             hex"1234"
         );
@@ -158,12 +138,7 @@ contract XGRInterchainValidatorRegistryTest is Test {
             )
         );
         registry.applyMembership{value: MIN_RESERVE - 1}(
-            1,
-            deadline,
-            1,
-            D,
-            BLS_D,
-            EIP_D,
+            _transition(1, D, BLS_D, EIP_D),
             hex"03",
             hex"1234"
         );
@@ -173,12 +148,7 @@ contract XGRInterchainValidatorRegistryTest is Test {
         uint256 beforeBalance = address(registry).balance;
 
         registry.applyMembership(
-            1,
-            deadline,
-            2,
-            A,
-            BLS_A,
-            EIP_A,
+            _transition(2, A, BLS_A, EIP_A),
             hex"03",
             hex"1234"
         );
@@ -198,12 +168,7 @@ contract XGRInterchainValidatorRegistryTest is Test {
 
     function testExecutorCanClaimReimbursementAfterRemoval() public {
         registry.applyMembership(
-            1,
-            deadline,
-            2,
-            A,
-            BLS_A,
-            EIP_A,
+            _transition(2, A, BLS_A, EIP_A),
             hex"03",
             hex"1234"
         );
@@ -217,12 +182,7 @@ contract XGRInterchainValidatorRegistryTest is Test {
 
     function testStaleSetIdCannotReplay() public {
         registry.applyMembership(
-            1,
-            deadline,
-            2,
-            A,
-            BLS_A,
-            EIP_A,
+            _transition(2, A, BLS_A, EIP_A),
             hex"03",
             hex"1234"
         );
@@ -235,12 +195,7 @@ contract XGRInterchainValidatorRegistryTest is Test {
             )
         );
         registry.applyMembership{value: MIN_RESERVE}(
-            1,
-            deadline,
-            1,
-            D,
-            BLS_D,
-            EIP_D,
+            _transition(1, D, BLS_D, EIP_D),
             hex"03",
             hex"1234"
         );
@@ -273,12 +228,7 @@ contract XGRInterchainValidatorRegistryTest is Test {
     function testAddRejectsDuplicateBLSKey() public {
         vm.expectRevert(XGRInterchainValidatorRegistry.InvalidTransition.selector);
         registry.applyMembership{value: MIN_RESERVE}(
-            1,
-            deadline,
-            1,
-            D,
-            BLS_A,
-            EIP_A,
+            _transition(1, D, BLS_A, EIP_A),
             hex"03",
             hex"1234"
         );
@@ -288,15 +238,26 @@ contract XGRInterchainValidatorRegistryTest is Test {
         vm.warp(block.timestamp + 2 hours);
         vm.expectRevert(XGRInterchainValidatorRegistry.InvalidTransition.selector);
         registry.applyMembership{value: MIN_RESERVE}(
-            1,
-            deadline,
-            1,
-            D,
-            BLS_D,
-            EIP_D,
+            _transition(1, D, BLS_D, EIP_D),
             hex"03",
             hex"1234"
         );
+    }
+
+    function _transition(
+        uint8 action,
+        address validator,
+        bytes memory blsKey,
+        bytes memory eipKey
+    ) internal view returns (XGRInterchainValidatorRegistry.MembershipTransition memory) {
+        return XGRInterchainValidatorRegistry.MembershipTransition({
+            expectedSetId: 1,
+            validUntil: deadline,
+            action: action,
+            validator: validator,
+            blsPublicKey: blsKey,
+            blsPublicKeyEIP2537: eipKey
+        });
     }
 
     function _key(uint8 seed) internal pure returns (bytes memory out) {
