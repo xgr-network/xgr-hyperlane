@@ -106,6 +106,19 @@ contract XGRInterchainValidatorRegistryTest is Test {
         assertEq(reserve, MIN_RESERVE);
     }
 
+    function testEIP2537ValidatorSetView() public view {
+        (address[] memory validators, bytes[] memory keys, uint64 setId) = registry.getValidatorSetEIP2537();
+        assertEq(validators.length, 3);
+        assertEq(keys.length, 3);
+        assertEq(validators[0], A);
+        assertEq(keys[0], EIP_A);
+        assertEq(validators[1], B);
+        assertEq(keys[1], EIP_B);
+        assertEq(validators[2], C);
+        assertEq(keys[2], EIP_C);
+        assertEq(setId, 1);
+    }
+
     function testAddRequiresQuorumAndLocksReserve() public {
         registry.applyMembership{value: MIN_RESERVE}(
             _transition(1, D, BLS_D, EIP_D),
