@@ -102,21 +102,19 @@ contract XGRInterchainBLSVerifier is IXGRInterchainBLSVerifier {
         );
         bytes32 bi = sha256(abi.encodePacked(b0, uint8(1), dstPrime));
 
-        uniform = new bytes(256);
-        _writeWord(uniform, 0, bi);
+        uniform = abi.encodePacked(bi);
         for (uint8 i = 2; i <= 8; i++) {
             bi = sha256(abi.encodePacked(b0 ^ bi, i, dstPrime));
-            _writeWord(uniform, (uint256(i) - 1) * 32, bi);
+            uniform = bytes.concat(uniform, abi.encodePacked(bi));
         }
     }
 
     function _modP(bytes memory uniform, uint256 offset) internal view returns (bool, bytes memory) {
+        if (offset + 64 > uniform.length) return (false, bytes(""));
+
         bytes memory base = new bytes(64);
-        assembly ("memory-safe") {
-            let src := add(add(uniform, 0x20), offset)
-            let dst := add(base, 0x20)
-            mstore(dst, mload(src))
-            mstore(add(dst, 0x20), mload(add(src, 0x20)))
+        for (uint256 i = 0; i < 64; i++) {
+            base[i] = uniform[offset + i];
         }
 
         bytes memory input =
@@ -124,11 +122,5 @@ contract XGRInterchainBLSVerifier is IXGRInterchainBLSVerifier {
         (bool ok, bytes memory out) = MODEXP.staticcall(input);
         if (!ok || out.length != 64) return (false, bytes(""));
         return (true, out);
-    }
-
-    function _writeWord(bytes memory dst, uint256 offset, bytes32 value) internal pure {
-        assembly ("memory-safe") {
-            mstore(add(add(dst, 0x20), offset), value)
-        }
     }
 }
