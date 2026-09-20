@@ -1,0 +1,21 @@
+name: Native Interchain Contracts
+
+on:
+  push:
+    branches: [ "feature/native-interchain-registry-v1" ]
+  workflow_dispatch:
+
+jobs:
+  forge-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+      - name: Install forge-std
+        run: forge install foundry-rs/forge-std --no-commit
+      - name: Format check
+        run: forge fmt --check
+      - name: Contract tests
+        run: forge test -vvv
