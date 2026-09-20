@@ -56,6 +56,21 @@ The workflow requires encrypted repository secrets for host, user, SSH private
 key and pinned SSH host key. No concrete production hostname or server address
 is committed to this repository.
 
+## XGR node native interchain environment
+
+The XGR node's native interchain worker reads the origin Hyperlane deployment from environment variables. These values are deployment-specific and must never be hardcoded into the node binary.
+
+For XGRChain mainnet:
+
+```bash
+XGR_INTERCHAIN_ORIGIN_MAILBOX_ADDR=0x5632409bc2f0e8bAc4AaF43654D4FFc7822C9c79
+XGR_INTERCHAIN_ORIGIN_MERKLE_TREE_HOOK_ADDR=0xeD98Af715b5a72dCD412567eb086d48225CDDACF
+```
+
+Each destination additionally uses the existing `XGR_INTERCHAIN_<NAME>_*` configuration, including chain ID, domain, registry address, RPC endpoint, deactivation reserve, confirmations and timing policy.
+
+The origin mailbox and MerkleTreeHook are read only from the local finalized XGR state. The relayer never supplies a payload for the validator to sign.
+
 ## Launch gates
 
 Do not unpause or expose the bridge until all of the following are evidenced:
