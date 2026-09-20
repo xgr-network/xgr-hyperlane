@@ -31,6 +31,35 @@ contract XGRInterchainBLSVerifierTest is Test {
         );
     }
 
+    function testKryptologyVectorVerifiesAggregatedMultiKeyPath() public view {
+        bytes[] memory keys = new bytes[](2);
+        keys[0] = EIP2537_PUBLIC_KEY;
+        keys[1] = EIP2537_PUBLIC_KEY;
+
+        (bool ok, bytes memory aggregateSignature) =
+            address(0x0d).staticcall(bytes.concat(EIP2537_SIGNATURE, EIP2537_SIGNATURE));
+        assertTrue(ok);
+        assertEq(aggregateSignature.length, 256);
+
+        assertTrue(
+            verifier.verify(
+                bytes("xgr-eip2537-vector"),
+                keys,
+                hex"03",
+                aggregateSignature
+            )
+        );
+
+        assertFalse(
+            verifier.verify(
+                bytes("xgr-eip2537-vector"),
+                keys,
+                hex"01",
+                aggregateSignature
+            )
+        );
+    }
+
     function testKryptologyVectorRejectsChangedMessage() public view {
         bytes[] memory keys = new bytes[](1);
         keys[0] = EIP2537_PUBLIC_KEY;
