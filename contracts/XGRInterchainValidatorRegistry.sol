@@ -64,6 +64,7 @@ contract XGRInterchainValidatorRegistry {
             originChainId_ == 0 ||
             destinationDomain_ == 0 ||
             verifier_ == address(0) ||
+            minimumDeactivationReserveWei_ < maxExecutorReimbursementWei_ ||
             initialValidators_.length == 0 ||
             initialValidators_.length != initialBLSPublicKeys_.length
         ) revert InvalidBootstrap();
