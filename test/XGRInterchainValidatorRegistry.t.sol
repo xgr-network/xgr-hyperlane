@@ -177,6 +177,15 @@ contract XGRInterchainValidatorRegistryTest is Test {
         );
     }
 
+    function testNonCanonicalPaddedBitmapCannotIncreaseWork() public {
+        vm.expectRevert(XGRInterchainValidatorRegistry.InsufficientQuorum.selector);
+        registry.applyMembership{value: MIN_RESERVE}(
+            _transition(1, D, BLS_D, EIP_D),
+            hex"0003",
+            hex"1234"
+        );
+    }
+
     function testVerifierFailureRejectsTransition() public {
         verifier.setResult(false);
         vm.expectRevert(XGRInterchainValidatorRegistry.InsufficientQuorum.selector);
