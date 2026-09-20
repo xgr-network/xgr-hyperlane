@@ -18,6 +18,10 @@ contract XGRInterchainValidatorRegistryTest is Test {
     bytes internal BLS_B;
     bytes internal BLS_C;
     bytes internal BLS_D;
+    bytes internal EIP_A;
+    bytes internal EIP_B;
+    bytes internal EIP_C;
+    bytes internal EIP_D;
     uint64 internal deadline;
 
     uint256 internal constant MIN_RESERVE = 1 ether;
@@ -30,6 +34,10 @@ contract XGRInterchainValidatorRegistryTest is Test {
         BLS_B = _key(0xB2);
         BLS_C = _key(0xC3);
         BLS_D = _key(0xD4);
+        EIP_A = _eipKey(0xA1);
+        EIP_B = _eipKey(0xB2);
+        EIP_C = _eipKey(0xC3);
+        EIP_D = _eipKey(0xD4);
         deadline = uint64(block.timestamp + 1 hours);
         vm.txGasPrice(1 gwei);
 
@@ -42,6 +50,11 @@ contract XGRInterchainValidatorRegistryTest is Test {
         keys[0] = BLS_A;
         keys[1] = BLS_B;
         keys[2] = BLS_C;
+
+        bytes[] memory eipKeys = new bytes[](3);
+        eipKeys[0] = EIP_A;
+        eipKeys[1] = EIP_B;
+        eipKeys[2] = EIP_C;
 
         bytes[] memory proofs = new bytes[](3);
         proofs[0] = hex"01";
@@ -56,6 +69,7 @@ contract XGRInterchainValidatorRegistryTest is Test {
             MAX_REIMBURSEMENT,
             validators,
             keys,
+            eipKeys,
             proofs
         );
     }
@@ -79,6 +93,7 @@ contract XGRInterchainValidatorRegistryTest is Test {
             1,
             D,
             BLS_D,
+            EIP_D,
             hex"03",
             hex"1234"
         );
@@ -99,6 +114,7 @@ contract XGRInterchainValidatorRegistryTest is Test {
             1,
             D,
             BLS_D,
+            EIP_D,
             hex"01",
             hex"1234"
         );
@@ -112,6 +128,7 @@ contract XGRInterchainValidatorRegistryTest is Test {
             1,
             D,
             BLS_D,
+            EIP_D,
             hex"83",
             hex"1234"
         );
@@ -126,6 +143,7 @@ contract XGRInterchainValidatorRegistryTest is Test {
             1,
             D,
             BLS_D,
+            EIP_D,
             hex"03",
             hex"1234"
         );
@@ -145,6 +163,7 @@ contract XGRInterchainValidatorRegistryTest is Test {
             1,
             D,
             BLS_D,
+            EIP_D,
             hex"03",
             hex"1234"
         );
@@ -159,6 +178,7 @@ contract XGRInterchainValidatorRegistryTest is Test {
             2,
             A,
             BLS_A,
+            EIP_A,
             hex"03",
             hex"1234"
         );
@@ -183,6 +203,7 @@ contract XGRInterchainValidatorRegistryTest is Test {
             2,
             A,
             BLS_A,
+            EIP_A,
             hex"03",
             hex"1234"
         );
@@ -201,6 +222,7 @@ contract XGRInterchainValidatorRegistryTest is Test {
             2,
             A,
             BLS_A,
+            EIP_A,
             hex"03",
             hex"1234"
         );
@@ -218,6 +240,7 @@ contract XGRInterchainValidatorRegistryTest is Test {
             1,
             D,
             BLS_D,
+            EIP_D,
             hex"03",
             hex"1234"
         );
@@ -228,6 +251,8 @@ contract XGRInterchainValidatorRegistryTest is Test {
         validators[0] = A;
         bytes[] memory keys = new bytes[](1);
         keys[0] = BLS_A;
+        bytes[] memory eipKeys = new bytes[](1);
+        eipKeys[0] = EIP_A;
         bytes[] memory proofs = new bytes[](1);
         proofs[0] = hex"01";
 
@@ -240,6 +265,7 @@ contract XGRInterchainValidatorRegistryTest is Test {
             0.1 ether,
             validators,
             keys,
+            eipKeys,
             proofs
         );
     }
@@ -252,6 +278,7 @@ contract XGRInterchainValidatorRegistryTest is Test {
             1,
             D,
             BLS_A,
+            EIP_A,
             hex"03",
             hex"1234"
         );
@@ -266,6 +293,7 @@ contract XGRInterchainValidatorRegistryTest is Test {
             1,
             D,
             BLS_D,
+            EIP_D,
             hex"03",
             hex"1234"
         );
@@ -274,6 +302,13 @@ contract XGRInterchainValidatorRegistryTest is Test {
     function _key(uint8 seed) internal pure returns (bytes memory out) {
         out = new bytes(48);
         for (uint256 i = 0; i < 48; i++) {
+            out[i] = bytes1(seed);
+        }
+    }
+
+    function _eipKey(uint8 seed) internal pure returns (bytes memory out) {
+        out = new bytes(128);
+        for (uint256 i = 0; i < 128; i++) {
             out[i] = bytes1(seed);
         }
     }
