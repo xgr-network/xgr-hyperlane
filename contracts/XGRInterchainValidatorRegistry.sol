@@ -202,6 +202,19 @@ contract XGRInterchainValidatorRegistry {
         return (validators, blsPublicKeys, setId);
     }
 
+    function getValidatorSetEIP2537()
+        external
+        view
+        returns (address[] memory validators, bytes[] memory blsPublicKeysEIP2537, uint64 currentSetId)
+    {
+        validators = activeValidators;
+        blsPublicKeysEIP2537 = new bytes[](validators.length);
+        for (uint256 i = 0; i < validators.length; i++) {
+            blsPublicKeysEIP2537[i] = validatorInfo[validators[i]].blsPublicKeyEIP2537;
+        }
+        return (validators, blsPublicKeysEIP2537, setId);
+    }
+
     function quorumThreshold() public view returns (uint256) {
         uint256 n = activeValidators.length;
         return (2 * n + 2) / 3;
