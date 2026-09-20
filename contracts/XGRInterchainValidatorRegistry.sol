@@ -36,6 +36,7 @@ contract XGRInterchainValidatorRegistry {
     mapping(address => Validator) private validatorInfo;
     address[] private activeValidators;
     mapping(address => uint256) private activeIndexPlusOne;
+    mapping(address => uint256) public claimableWei;
 
     error InvalidBootstrap();
     error InvalidTransition();
@@ -43,10 +44,12 @@ contract XGRInterchainValidatorRegistry {
     error InsufficientQuorum();
     error InsufficientReserve(uint256 required, uint256 supplied);
     error TransferFailed();
+    error NothingToClaim();
 
     event ValidatorAdded(address indexed validator, uint64 indexed setId, uint256 reserveWei);
     event ValidatorRemoved(address indexed validator, uint64 indexed setId, address indexed executor, uint256 reimbursementWei);
     event ReserveIncreased(address indexed validator, uint256 amountWei, uint256 newReserveWei);
+    event Claimed(address indexed account, uint256 amountWei);
 
     constructor(
         uint64 originChainId_,
@@ -98,6 +101,20 @@ contract XGRInterchainValidatorRegistry {
         if (!v.active) revert InvalidTransition();
         v.deactivationReserveWei += msg.value;
         emit ReserveIncreased(msg.sender, msg.value, v.deactivationReserveWei);
+    }
+
+    function claim() external {
+        uint256 amount = claimableWei[msg.sender];
+        if (amount == 0) revert NothingToClaim();
+        claimableWei[msg.sender] = 0;
+
+        (bool ok,) = payable(msg.sender).call{value: amount}("");
+        if (!ok) {
+            claimableWei[msg.sender] = amount;
+            revert TransferFailed();
+        }
+
+        emit Claimed(msg.sender, amount);
     }
 
     function getValidatorStatus(address validator) external view returns (bool active, uint64 currentSetId) {
@@ -257,13 +274,13 @@ contract XGRInterchainValidatorRegistry {
         }
         uint256 remainder = reserve - reimbursement;
 
+        // Membership removal must never depend on an external recipient accepting ETH.
+        // Credit both parties and let them pull funds separately.
         if (reimbursement != 0) {
-            (bool okExecutor,) = payable(msg.sender).call{value: reimbursement}("");
-            if (!okExecutor) revert TransferFailed();
+            claimableWei[msg.sender] += reimbursement;
         }
         if (remainder != 0) {
-            (bool okValidator,) = payable(validator).call{value: remainder}("");
-            if (!okValidator) revert TransferFailed();
+            claimableWei[validator] += remainder;
         }
 
         emit ValidatorRemoved(validator, setId + 1, msg.sender, reimbursement);
