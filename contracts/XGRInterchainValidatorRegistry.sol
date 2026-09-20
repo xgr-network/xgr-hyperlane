@@ -86,40 +86,55 @@ contract XGRInterchainValidatorRegistry {
         if (reservePerValidator * initialValidators_.length != msg.value) revert InvalidBootstrap();
 
         for (uint256 i = 0; i < initialValidators_.length; i++) {
-            address validator = initialValidators_[i];
-            bytes memory blsKey = initialBLSPublicKeys_[i];
-            bytes memory possessionProof = initialBLSPossessionProofs_[i];
-            bytes32 keyHash = keccak256(blsKey);
-            if (
-                validator == address(0) ||
-                blsKey.length != BLS_PUBLIC_KEY_LENGTH ||
-                activeIndexPlusOne[validator] != 0 ||
-                activeBLSKeyOwner[keyHash] != address(0) ||
-                possessionProof.length == 0
-            ) revert InvalidBootstrap();
-
-            bytes[] memory bootstrapKeys = new bytes[](1);
-            bootstrapKeys[0] = blsKey;
-            if (
-                !verifier.verify(
-                    encodeBootstrapPayload(originChainId_, destinationDomain_, validator, blsKey),
-                    bootstrapKeys,
-                    hex"01",
-                    possessionProof
-                )
-            ) revert InvalidBootstrap();
-
-            validatorInfo[validator] = Validator({
-                active: true,
-                blsPublicKey: blsKey,
-                deactivationReserveWei: reservePerValidator
-            });
-            activeValidators.push(validator);
-            activeIndexPlusOne[validator] = activeValidators.length;
-            activeBLSKeyOwner[keyHash] = validator;
+            _bootstrapValidator(
+                originChainId_,
+                destinationDomain_,
+                initialValidators_[i],
+                initialBLSPublicKeys_[i],
+                initialBLSPossessionProofs_[i],
+                reservePerValidator
+            );
         }
 
         setId = 1;
+    }
+
+    function _bootstrapValidator(
+        uint64 originChainId_,
+        uint32 destinationDomain_,
+        address validator,
+        bytes memory blsKey,
+        bytes memory possessionProof,
+        uint256 reservePerValidator
+    ) internal {
+        bytes32 keyHash = keccak256(blsKey);
+        if (
+            validator == address(0) ||
+            blsKey.length != BLS_PUBLIC_KEY_LENGTH ||
+            activeIndexPlusOne[validator] != 0 ||
+            activeBLSKeyOwner[keyHash] != address(0) ||
+            possessionProof.length == 0
+        ) revert InvalidBootstrap();
+
+        bytes[] memory bootstrapKeys = new bytes[](1);
+        bootstrapKeys[0] = blsKey;
+        if (
+            !verifier.verify(
+                encodeBootstrapPayload(originChainId_, destinationDomain_, validator, blsKey),
+                bootstrapKeys,
+                hex"01",
+                possessionProof
+            )
+        ) revert InvalidBootstrap();
+
+        validatorInfo[validator] = Validator({
+            active: true,
+            blsPublicKey: blsKey,
+            deactivationReserveWei: reservePerValidator
+        });
+        activeValidators.push(validator);
+        activeIndexPlusOne[validator] = activeValidators.length;
+        activeBLSKeyOwner[keyHash] = validator;
     }
 
     receive() external payable {
