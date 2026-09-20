@@ -37,29 +37,48 @@ contract XGRInterchainBLSVerifier is IXGRInterchainBLSVerifier {
             return false;
         }
 
+        (bool aggregateOK, bytes memory aggregatePublicKey) =
+            _aggregatePublicKeys(publicKeys, signerBitmap);
+        if (!aggregateOK) return false;
+
+        (bool hashOK, bytes memory messagePoint) = _hashToG2(message);
+        if (!hashOK) return false;
+
+        return _pairingCheck(aggregatePublicKey, messagePoint, aggregateSignature);
+    }
+
+    function _aggregatePublicKeys(
+        bytes[] calldata publicKeys,
+        bytes calldata signerBitmap
+    ) internal view returns (bool, bytes memory) {
         bytes memory aggregatePublicKey;
         bool haveSigner;
 
         for (uint256 i = 0; i < publicKeys.length; i++) {
-            if (publicKeys[i].length != G1_LENGTH) return false;
+            if (publicKeys[i].length != G1_LENGTH) return (false, bytes(""));
             if (!_bitmapContains(signerBitmap, i)) continue;
 
             if (!haveSigner) {
                 aggregatePublicKey = publicKeys[i];
                 haveSigner = true;
-            } else {
-                (bool addOK, bytes memory sum) =
-                    BLS12_G1ADD.staticcall(bytes.concat(aggregatePublicKey, publicKeys[i]));
-                if (!addOK || sum.length != G1_LENGTH) return false;
-                aggregatePublicKey = sum;
+                continue;
             }
+
+            (bool addOK, bytes memory sum) =
+                BLS12_G1ADD.staticcall(bytes.concat(aggregatePublicKey, publicKeys[i]));
+            if (!addOK || sum.length != G1_LENGTH) return (false, bytes(""));
+            aggregatePublicKey = sum;
         }
 
-        if (!haveSigner) return false;
+        if (!haveSigner) return (false, bytes(""));
+        return (true, aggregatePublicKey);
+    }
 
-        (bool hashOK, bytes memory messagePoint) = _hashToG2(message);
-        if (!hashOK) return false;
-
+    function _pairingCheck(
+        bytes memory aggregatePublicKey,
+        bytes memory messagePoint,
+        bytes calldata aggregateSignature
+    ) internal view returns (bool) {
         bytes memory pairingInput =
             bytes.concat(aggregatePublicKey, messagePoint, NEGATED_G1_GENERATOR, aggregateSignature);
         (bool pairingOK, bytes memory pairingResult) = BLS12_PAIRING.staticcall(pairingInput);
@@ -76,23 +95,30 @@ contract XGRInterchainBLSVerifier is IXGRInterchainBLSVerifier {
     function _hashToG2(bytes calldata message) internal view returns (bool, bytes memory) {
         bytes memory uniform = _expandMessageXmd(message);
 
-        (bool ok0, bytes memory u00) = _modP(uniform, 0);
-        if (!ok0) return (false, bytes(""));
-        (bool ok1, bytes memory u01) = _modP(uniform, 64);
-        if (!ok1) return (false, bytes(""));
-        (bool ok2, bytes memory u10) = _modP(uniform, 128);
-        if (!ok2) return (false, bytes(""));
-        (bool ok3, bytes memory u11) = _modP(uniform, 192);
-        if (!ok3) return (false, bytes(""));
+        (bool map0OK, bytes memory q0) = _mapUniformToG2(uniform, 0);
+        if (!map0OK) return (false, bytes(""));
 
-        (bool map0OK, bytes memory q0) = BLS12_MAP_FP2_TO_G2.staticcall(bytes.concat(u00, u01));
-        if (!map0OK || q0.length != G2_LENGTH) return (false, bytes(""));
-        (bool map1OK, bytes memory q1) = BLS12_MAP_FP2_TO_G2.staticcall(bytes.concat(u10, u11));
-        if (!map1OK || q1.length != G2_LENGTH) return (false, bytes(""));
+        (bool map1OK, bytes memory q1) = _mapUniformToG2(uniform, 128);
+        if (!map1OK) return (false, bytes(""));
 
         (bool addOK, bytes memory sum) = BLS12_G2ADD.staticcall(bytes.concat(q0, q1));
         if (!addOK || sum.length != G2_LENGTH) return (false, bytes(""));
         return (true, sum);
+    }
+
+    function _mapUniformToG2(
+        bytes memory uniform,
+        uint256 offset
+    ) internal view returns (bool, bytes memory) {
+        (bool c0OK, bytes memory c0) = _modP(uniform, offset);
+        if (!c0OK) return (false, bytes(""));
+
+        (bool c1OK, bytes memory c1) = _modP(uniform, offset + 64);
+        if (!c1OK) return (false, bytes(""));
+
+        (bool mapOK, bytes memory point) = BLS12_MAP_FP2_TO_G2.staticcall(bytes.concat(c0, c1));
+        if (!mapOK || point.length != G2_LENGTH) return (false, bytes(""));
+        return (true, point);
     }
 
     function _expandMessageXmd(bytes calldata message) internal pure returns (bytes memory uniform) {
