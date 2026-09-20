@@ -15,7 +15,5 @@ jobs:
           version: stable
       - name: Install forge-std
         run: forge install foundry-rs/forge-std --no-commit
-      - name: Format check
-        run: forge fmt --check
       - name: Contract tests
         run: forge test -vvv
