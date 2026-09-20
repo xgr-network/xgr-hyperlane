@@ -14,10 +14,11 @@ contract XGRInterchainValidatorRegistryTest is Test {
     address internal constant C = address(0xC3);
     address internal constant D = address(0xD4);
 
-    bytes internal constant BLS_A = hex"01";
-    bytes internal constant BLS_B = hex"02";
-    bytes internal constant BLS_C = hex"03";
-    bytes internal constant BLS_D = hex"04";
+    bytes internal BLS_A;
+    bytes internal BLS_B;
+    bytes internal BLS_C;
+    bytes internal BLS_D;
+    uint64 internal deadline;
 
     uint256 internal constant MIN_RESERVE = 1 ether;
     uint256 internal constant MAX_REIMBURSEMENT = 0.1 ether;
@@ -25,6 +26,12 @@ contract XGRInterchainValidatorRegistryTest is Test {
     function setUp() public {
         vm.deal(address(this), 100 ether);
         verifier = new MockXGRInterchainBLSVerifier();
+        BLS_A = _key(0xA1);
+        BLS_B = _key(0xB2);
+        BLS_C = _key(0xC3);
+        BLS_D = _key(0xD4);
+        deadline = uint64(block.timestamp + 1 hours);
+        vm.txGasPrice(1 gwei);
 
         address[] memory validators = new address[](3);
         validators[0] = A;
@@ -36,6 +43,11 @@ contract XGRInterchainValidatorRegistryTest is Test {
         keys[1] = BLS_B;
         keys[2] = BLS_C;
 
+        bytes[] memory proofs = new bytes[](3);
+        proofs[0] = hex"01";
+        proofs[1] = hex"02";
+        proofs[2] = hex"03";
+
         registry = new XGRInterchainValidatorRegistry{value: 3 * MIN_RESERVE}(
             1643,
             8453,
@@ -43,7 +55,8 @@ contract XGRInterchainValidatorRegistryTest is Test {
             MIN_RESERVE,
             MAX_REIMBURSEMENT,
             validators,
-            keys
+            keys,
+            proofs
         );
     }
 
@@ -62,6 +75,7 @@ contract XGRInterchainValidatorRegistryTest is Test {
     function testAddRequiresQuorumAndLocksReserve() public {
         registry.applyMembership{value: MIN_RESERVE}(
             1,
+            deadline,
             1,
             D,
             BLS_D,
@@ -81,6 +95,7 @@ contract XGRInterchainValidatorRegistryTest is Test {
         vm.expectRevert(XGRInterchainValidatorRegistry.InsufficientQuorum.selector);
         registry.applyMembership{value: MIN_RESERVE}(
             1,
+            deadline,
             1,
             D,
             BLS_D,
@@ -93,6 +108,7 @@ contract XGRInterchainValidatorRegistryTest is Test {
         vm.expectRevert(XGRInterchainValidatorRegistry.InsufficientQuorum.selector);
         registry.applyMembership{value: MIN_RESERVE}(
             1,
+            deadline,
             1,
             D,
             BLS_D,
@@ -106,6 +122,7 @@ contract XGRInterchainValidatorRegistryTest is Test {
         vm.expectRevert(XGRInterchainValidatorRegistry.InsufficientQuorum.selector);
         registry.applyMembership{value: MIN_RESERVE}(
             1,
+            deadline,
             1,
             D,
             BLS_D,
@@ -124,6 +141,7 @@ contract XGRInterchainValidatorRegistryTest is Test {
         );
         registry.applyMembership{value: MIN_RESERVE - 1}(
             1,
+            deadline,
             1,
             D,
             BLS_D,
@@ -137,6 +155,7 @@ contract XGRInterchainValidatorRegistryTest is Test {
 
         registry.applyMembership(
             1,
+            deadline,
             2,
             A,
             BLS_A,
@@ -147,8 +166,10 @@ contract XGRInterchainValidatorRegistryTest is Test {
         (bool active,, uint256 reserve) = registry.getValidator(A);
         assertFalse(active);
         assertEq(reserve, 0);
-        assertEq(registry.claimableWei(address(this)), MAX_REIMBURSEMENT);
-        assertEq(registry.claimableWei(A), MIN_RESERVE - MAX_REIMBURSEMENT);
+        uint256 reimbursement = registry.claimableWei(address(this));
+        assertGt(reimbursement, 0);
+        assertLe(reimbursement, MAX_REIMBURSEMENT);
+        assertEq(registry.claimableWei(A), MIN_RESERVE - reimbursement);
         assertEq(address(registry).balance, beforeBalance);
 
         (, uint64 setId) = registry.getValidatorStatus(A);
@@ -158,6 +179,7 @@ contract XGRInterchainValidatorRegistryTest is Test {
     function testExecutorCanClaimReimbursementAfterRemoval() public {
         registry.applyMembership(
             1,
+            deadline,
             2,
             A,
             BLS_A,
@@ -165,15 +187,17 @@ contract XGRInterchainValidatorRegistryTest is Test {
             hex"1234"
         );
 
+        uint256 reimbursement = registry.claimableWei(address(this));
         uint256 before = address(this).balance;
         registry.claim();
-        assertEq(address(this).balance, before + MAX_REIMBURSEMENT);
+        assertEq(address(this).balance, before + reimbursement);
         assertEq(registry.claimableWei(address(this)), 0);
     }
 
     function testStaleSetIdCannotReplay() public {
         registry.applyMembership(
             1,
+            deadline,
             2,
             A,
             BLS_A,
@@ -190,6 +214,7 @@ contract XGRInterchainValidatorRegistryTest is Test {
         );
         registry.applyMembership{value: MIN_RESERVE}(
             1,
+            deadline,
             1,
             D,
             BLS_D,
@@ -203,6 +228,8 @@ contract XGRInterchainValidatorRegistryTest is Test {
         validators[0] = A;
         bytes[] memory keys = new bytes[](1);
         keys[0] = BLS_A;
+        bytes[] memory proofs = new bytes[](1);
+        proofs[0] = hex"01";
 
         vm.expectRevert(XGRInterchainValidatorRegistry.InvalidBootstrap.selector);
         new XGRInterchainValidatorRegistry{value: MIN_RESERVE}(
@@ -212,8 +239,43 @@ contract XGRInterchainValidatorRegistryTest is Test {
             0.01 ether,
             0.1 ether,
             validators,
-            keys
+            keys,
+            proofs
         );
+    }
+
+    function testAddRejectsDuplicateBLSKey() public {
+        vm.expectRevert(XGRInterchainValidatorRegistry.InvalidTransition.selector);
+        registry.applyMembership{value: MIN_RESERVE}(
+            1,
+            deadline,
+            1,
+            D,
+            BLS_A,
+            hex"03",
+            hex"1234"
+        );
+    }
+
+    function testExpiredProofCannotExecute() public {
+        vm.warp(block.timestamp + 2 hours);
+        vm.expectRevert(XGRInterchainValidatorRegistry.InvalidTransition.selector);
+        registry.applyMembership{value: MIN_RESERVE}(
+            1,
+            deadline,
+            1,
+            D,
+            BLS_D,
+            hex"03",
+            hex"1234"
+        );
+    }
+
+    function _key(uint8 seed) internal pure returns (bytes memory out) {
+        out = new bytes(48);
+        for (uint256 i = 0; i < 48; i++) {
+            out[i] = bytes1(seed);
+        }
     }
 
     receive() external payable {}
