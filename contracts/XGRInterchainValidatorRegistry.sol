@@ -357,21 +357,36 @@ contract XGRInterchainValidatorRegistry {
     }
 
     function computeValidatorSetCommitment(
-        address[] memory validators,
-        bytes[] memory blsPublicKeysEIP2537
-    ) public pure returns (bytes32) {
+        address[] calldata validators,
+        bytes[] calldata blsPublicKeysEIP2537
+    ) external pure returns (bytes32 commitment) {
         if (validators.length == 0 || validators.length != blsPublicKeysEIP2537.length) {
             revert InvalidTransition();
         }
-        return keccak256(abi.encode(validators, blsPublicKeysEIP2537));
+        commitment = keccak256(abi.encodePacked("XGR_INTERCHAIN_SET_V1", uint256(validators.length)));
+        for (uint256 i = 0; i < validators.length; i++) {
+            if (blsPublicKeysEIP2537[i].length != BLS_PUBLIC_KEY_EIP2537_LENGTH) {
+                revert InvalidTransition();
+            }
+            commitment = keccak256(
+                abi.encodePacked(commitment, validators[i], keccak256(blsPublicKeysEIP2537[i]))
+            );
+        }
     }
 
     function _commitValidatorSet() internal {
-        bytes[] memory keys = new bytes[](activeValidators.length);
+        bytes32 commitment =
+            keccak256(abi.encodePacked("XGR_INTERCHAIN_SET_V1", uint256(activeValidators.length)));
         for (uint256 i = 0; i < activeValidators.length; i++) {
-            keys[i] = validatorInfo[activeValidators[i]].blsPublicKeyEIP2537;
+            address validator = activeValidators[i];
+            commitment = keccak256(
+                abi.encodePacked(
+                    commitment,
+                    validator,
+                    keccak256(validatorInfo[validator].blsPublicKeyEIP2537)
+                )
+            );
         }
-        bytes32 commitment = computeValidatorSetCommitment(activeValidators, keys);
         validatorSetCommitment[setId] = commitment;
         emit ValidatorSetCommitted(setId, commitment);
     }
