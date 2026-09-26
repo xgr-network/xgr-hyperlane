@@ -12,11 +12,13 @@ contract XGRInterchainValidatorRegistryV2Test is Test {
     address internal constant B = address(0xB2);
     address internal constant C = address(0xC3);
     address internal constant D = address(0xD4);
+    uint8 internal constant FORMAT_COMPRESSED = 1;
+    uint8 internal constant FORMAT_EIP2537 = 2;
 
     function testCompressedVerifierUsesCompressedKeys() public {
         verifier = new MockXGRInterchainBLSVerifier();
         XGRInterchainValidatorRegistryV2 registry = _deploy(
-            XGRInterchainValidatorRegistryV2.VERIFIER_FORMAT_COMPRESSED()
+            FORMAT_COMPRESSED
         );
 
         (address[] memory validators, bytes[] memory keys, uint64 setId) =
@@ -47,7 +49,7 @@ contract XGRInterchainValidatorRegistryV2Test is Test {
     function testEIP2537VerifierUsesEIP2537Keys() public {
         verifier = new MockXGRInterchainBLSVerifier();
         XGRInterchainValidatorRegistryV2 registry = _deploy(
-            XGRInterchainValidatorRegistryV2.VERIFIER_FORMAT_EIP2537()
+            FORMAT_EIP2537
         );
 
         (, bytes[] memory keys,) = registry.getValidatorSetForVerification();
@@ -57,13 +59,23 @@ contract XGRInterchainValidatorRegistryV2Test is Test {
 
     function testCanonicalMembershipPayloadUnchanged() public {
         verifier = new MockXGRInterchainBLSVerifier();
-        XGRInterchainValidatorRegistryV2 registry = _deploy(
-            XGRInterchainValidatorRegistryV2.VERIFIER_FORMAT_COMPRESSED()
-        );
+        XGRInterchainValidatorRegistryV2 registry = _deploy(FORMAT_COMPRESSED);
 
-        bytes memory compressed = hex"a695ad325dfc7e1191fbc9f186f58eff42a634029731b18380ff89bf42c464a42cb8ca55b200f051f57f1e1893c68759";
-        bytes memory eip = hex"000000000000000000000000000000000695ad325dfc7e1191fbc9f186f58eff42a634029731b18380ff89bf42c464a42cb8ca55b200f051f57f1e1893c687590000000000000000000000000000000010ea7912ef7a227c01298a7c7a96b1851b23021741c71938f39638b1d368aaa621452426b5d8199773a2cb5b2743a5da";
-        bytes memory expected = hex"5847525f494e544552434841494e5f5632000000000000066b0000066b0000000000000007000000006553f1000111111111111111111111111111111111111111110030a695ad325dfc7e1191fbc9f186f58eff42a634029731b18380ff89bf42c464a42cb8ca55b200f051f57f1e1893c687590080000000000000000000000000000000000695ad325dfc7e1191fbc9f186f58eff42a634029731b18380ff89bf42c464a42cb8ca55b200f051f57f1e1893c687590000000000000000000000000000000010ea7912ef7a227c01298a7c7a96b1851b23021741c71938f39638b1d368aaa621452426b5d8199773a2cb5b2743a5da";
+        bytes memory compressed = _bytes(48, 0x31);
+        bytes memory eip = _bytes(128, 0x41);
+        bytes memory expected = abi.encodePacked(
+            bytes("XGR_INTERCHAIN_V2"),
+            bytes8(uint64(1643)),
+            bytes4(uint32(1643)),
+            bytes8(uint64(7)),
+            bytes8(uint64(1700000000)),
+            bytes1(uint8(1)),
+            bytes20(address(0x1111111111111111111111111111111111111111)),
+            bytes2(uint16(compressed.length)),
+            compressed,
+            bytes2(uint16(eip.length)),
+            eip
+        );
 
         assertEq(
             registry.encodeMembershipPayload(
@@ -117,7 +129,7 @@ contract XGRInterchainValidatorRegistryV2Test is Test {
             _validators(),
             _keys(48, 1),
             _keys(128, 11),
-            _keys(format == 1 ? 96 : 256, 21)
+            _keys(format == FORMAT_COMPRESSED ? 96 : 256, 21)
         );
     }
 

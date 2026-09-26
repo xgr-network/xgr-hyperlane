@@ -11,6 +11,7 @@ contract XGRNativeInterchainISMV2Test is Test {
 
     address internal constant ORIGIN_MAILBOX = 0x1111111111111111111111111111111111111111;
     address internal constant ORIGIN_HOOK = 0x2222222222222222222222222222222222222222;
+    uint8 internal constant FORMAT_COMPRESSED = 1;
 
     function setUp() public {
         vm.deal(address(this), 10 ether);
@@ -32,7 +33,7 @@ contract XGRNativeInterchainISMV2Test is Test {
                 1643,
                 1643,
                 address(verifier),
-                XGRInterchainValidatorRegistryV2.VERIFIER_FORMAT_COMPRESSED(),
+                FORMAT_COMPRESSED,
                 1 ether,
                 0.1 ether,
                 validators,

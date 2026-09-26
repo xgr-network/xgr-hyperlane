@@ -4,7 +4,7 @@ pragma solidity ^0.8.24;
 import {IXGRInterchainValidatorSetV2} from "./IXGRInterchainValidatorSetV2.sol";
 import {IXGRInterchainBLSVerifier} from "./XGRInterchainValidatorRegistry.sol";
 
-/// @notice Hyperlane ISM for XGR-origin messages secured by the native XGR
+/// @notice Hyperlane ISM for messages from a configured external origin, secured by native XGR
 ///         interchain BLS validator subset.
 /// @dev The relayer is untrusted. It supplies only the message inclusion proof
 ///      and an already-completed XGR quorum attestation. The ISM reconstructs
@@ -18,7 +18,7 @@ import {IXGRInterchainBLSVerifier} from "./XGRInterchainValidatorRegistry.sol";
 ///   uint32 checkpointIndex,
 ///   uint64 setId,
 ///   bytes signerBitmap,
-///   bytes aggregateSignatureEIP2537
+///   bytes aggregateSignature
 /// )
 contract XGRNativeInterchainISMV2 {
     bytes private constant CHECKPOINT_DOMAIN_V1 = "XGR_INTERCHAIN_CHECKPOINT_V1";
