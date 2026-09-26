@@ -12,6 +12,7 @@ contract XGRNativeInterchainISMV2Test is Test {
     address internal constant ORIGIN_MAILBOX = 0x1111111111111111111111111111111111111111;
     address internal constant ORIGIN_HOOK = 0x2222222222222222222222222222222222222222;
     uint8 internal constant FORMAT_COMPRESSED = 1;
+    uint8 internal constant FORMAT_EIP2537 = 2;
 
     function setUp() public {
         vm.deal(address(this), 10 ether);
@@ -95,6 +96,53 @@ contract XGRNativeInterchainISMV2Test is Test {
             _bytes(256, 0x44)
         );
         assertFalse(ism.verify(metadata, _message(8453, 1643)));
+    }
+
+    function testEIP2537ModeAccepts256ByteSignature() public {
+        MockXGRInterchainBLSVerifier verifier = new MockXGRInterchainBLSVerifier();
+
+        address[] memory validators = new address[](3);
+        bytes[] memory keys = new bytes[](3);
+        bytes[] memory eipKeys = new bytes[](3);
+        bytes[] memory proofs = new bytes[](3);
+        for (uint256 i = 0; i < 3; i++) {
+            validators[i] = address(uint160(0xB1 + i));
+            keys[i] = _bytes(48, uint8(i + 31));
+            eipKeys[i] = _bytes(128, uint8(i + 41));
+            proofs[i] = _bytes(256, uint8(i + 51));
+        }
+
+        XGRInterchainValidatorRegistryV2 registry =
+            new XGRInterchainValidatorRegistryV2{value: 3 ether}(
+                1643,
+                1643,
+                address(verifier),
+                FORMAT_EIP2537,
+                1 ether,
+                0.1 ether,
+                validators,
+                keys,
+                eipKeys,
+                proofs
+            );
+
+        XGRNativeInterchainISMV2 eipISM = new XGRNativeInterchainISMV2(
+            address(registry),
+            42161,
+            42161,
+            ORIGIN_MAILBOX,
+            ORIGIN_HOOK
+        );
+
+        bytes memory metadata = abi.encode(
+            uint32(0),
+            _singleLeafProof(),
+            uint32(0),
+            uint64(1),
+            hex"03",
+            _bytes(256, 0x55)
+        );
+        assertTrue(eipISM.verify(metadata, _message(42161, 1643)));
     }
 
     function testWrongOriginRejected() public view {
