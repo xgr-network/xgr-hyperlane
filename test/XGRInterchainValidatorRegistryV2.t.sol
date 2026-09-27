@@ -44,6 +44,35 @@ contract XGRInterchainValidatorRegistryV2Test is Test {
 
         (, uint64 newSetId) = registry.getValidatorStatus(D);
         assertEq(newSetId, 2);
+
+        (address[] memory oldValidators, bytes[] memory oldKeys, uint64 oldSetId) =
+            registry.getValidatorSetForVerification(1);
+        assertEq(oldSetId, 1);
+        assertEq(oldValidators.length, 3);
+        assertEq(oldValidators[0], A);
+        assertEq(oldValidators[1], B);
+        assertEq(oldValidators[2], C);
+        assertEq(oldKeys.length, 3);
+        assertEq(oldKeys[0].length, 48);
+
+        (address[] memory currentValidators, bytes[] memory currentKeys, uint64 currentSetId) =
+            registry.getValidatorSetForVerification(2);
+        assertEq(currentSetId, 2);
+        assertEq(currentValidators.length, 4);
+        assertEq(currentValidators[3], D);
+        assertEq(currentKeys.length, 4);
+    }
+
+    function testUnknownHistoricalSetReturnsNoResolvedSet() public {
+        verifier = new MockXGRInterchainBLSVerifier();
+        XGRInterchainValidatorRegistryV2 registry = _deploy(FORMAT_COMPRESSED);
+
+        (address[] memory validators, bytes[] memory keys, uint64 resolvedSetId) =
+            registry.getValidatorSetForVerification(999);
+
+        assertEq(resolvedSetId, 0);
+        assertEq(validators.length, 0);
+        assertEq(keys.length, 0);
     }
 
     function testEIP2537VerifierUsesEIP2537Keys() public {
