@@ -42,6 +42,11 @@ contract XGRInterchainValidatorRegistryV2 {
         bytes blsPublicKeyEIP2537;
     }
 
+    struct VerificationSetSnapshot {
+        address[] validators;
+        bytes[] verificationKeys;
+    }
+
     uint64 public immutable originChainId;
     uint32 public immutable destinationDomain;
     uint256 public immutable minimumDeactivationReserveWei;
@@ -57,6 +62,8 @@ contract XGRInterchainValidatorRegistryV2 {
     mapping(bytes32 => address) private activeBLSKeyOwner;
     mapping(address => uint256) public claimableWei;
     mapping(uint64 => bytes32) public validatorSetCommitment;
+    mapping(uint64 => VerificationSetSnapshot) private verificationSetSnapshots;
+    mapping(uint64 => bool) private verificationSetSnapshotExists;
 
     error InvalidBootstrap();
     error InvalidTransition();
@@ -232,13 +239,15 @@ contract XGRInterchainValidatorRegistryV2 {
         view
         returns (address[] memory validators, bytes[] memory verificationKeys, uint64 currentSetId)
     {
-        validators = activeValidators;
-        verificationKeys = new bytes[](validators.length);
-        for (uint256 i = 0; i < validators.length; i++) {
-            Validator storage v = validatorInfo[validators[i]];
-            verificationKeys[i] = _verificationKey(v.blsPublicKey, v.blsPublicKeyEIP2537);
-        }
-        return (validators, verificationKeys, setId);
+        return _getValidatorSetForVerification(setId);
+    }
+
+    function getValidatorSetForVerification(uint64 requestedSetId)
+        external
+        view
+        returns (address[] memory validators, bytes[] memory verificationKeys, uint64 resolvedSetId)
+    {
+        return _getValidatorSetForVerification(requestedSetId);
     }
 
     function quorumThreshold() public view returns (uint256) {
@@ -399,20 +408,53 @@ contract XGRInterchainValidatorRegistryV2 {
     }
 
     function _commitValidatorSet() internal {
+        if (verificationSetSnapshotExists[setId]) revert InvalidTransition();
+
+        VerificationSetSnapshot storage snapshot = verificationSetSnapshots[setId];
         bytes32 commitment =
             keccak256(abi.encodePacked("XGR_INTERCHAIN_SET_V2", uint256(activeValidators.length)));
+
         for (uint256 i = 0; i < activeValidators.length; i++) {
             address validator = activeValidators[i];
+            Validator storage v = validatorInfo[validator];
+
+            snapshot.validators.push(validator);
+            snapshot.verificationKeys.push(_verificationKey(v.blsPublicKey, v.blsPublicKeyEIP2537));
+
             commitment = keccak256(
                 abi.encodePacked(
                     commitment,
                     validator,
-                    keccak256(validatorInfo[validator].blsPublicKey)
+                    keccak256(v.blsPublicKey)
                 )
             );
         }
+
+        verificationSetSnapshotExists[setId] = true;
         validatorSetCommitment[setId] = commitment;
         emit ValidatorSetCommitted(setId, commitment);
+    }
+
+    function _getValidatorSetForVerification(uint64 requestedSetId)
+        internal
+        view
+        returns (address[] memory validators, bytes[] memory verificationKeys, uint64 resolvedSetId)
+    {
+        if (!verificationSetSnapshotExists[requestedSetId]) {
+            return (new address[](0), new bytes[](0), 0);
+        }
+
+        VerificationSetSnapshot storage snapshot = verificationSetSnapshots[requestedSetId];
+        uint256 length = snapshot.validators.length;
+
+        validators = new address[](length);
+        verificationKeys = new bytes[](length);
+        for (uint256 i = 0; i < length; i++) {
+            validators[i] = snapshot.validators[i];
+            verificationKeys[i] = snapshot.verificationKeys[i];
+        }
+
+        return (validators, verificationKeys, requestedSetId);
     }
 
     function _verificationKey(bytes memory compressed, bytes memory eip2537)
