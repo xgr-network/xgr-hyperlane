@@ -22,6 +22,11 @@ interface IXGRInterchainValidatorSetV2 {
         view
         returns (address[] memory validators, bytes[] memory verificationKeys, uint64 setId);
 
+    function getValidatorSetForVerification(uint64 requestedSetId)
+        external
+        view
+        returns (address[] memory validators, bytes[] memory verificationKeys, uint64 resolvedSetId);
+
     function quorumThreshold() external view returns (uint256);
     function validatorSetCommitment(uint64 setId) external view returns (bytes32);
 }
