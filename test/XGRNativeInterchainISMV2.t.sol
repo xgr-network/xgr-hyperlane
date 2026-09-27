@@ -8,6 +8,7 @@ import {MockXGRInterchainBLSVerifier} from "../contracts/test/MockXGRInterchainB
 
 contract XGRNativeInterchainISMV2Test is Test {
     XGRNativeInterchainISMV2 internal ism;
+    XGRInterchainValidatorRegistryV2 internal registry;
 
     address internal constant ORIGIN_MAILBOX = 0x1111111111111111111111111111111111111111;
     address internal constant ORIGIN_HOOK = 0x2222222222222222222222222222222222222222;
@@ -29,8 +30,7 @@ contract XGRNativeInterchainISMV2Test is Test {
             proofs[i] = _bytes(96, uint8(i + 21));
         }
 
-        XGRInterchainValidatorRegistryV2 registry =
-            new XGRInterchainValidatorRegistryV2{value: 3 ether}(
+        registry = new XGRInterchainValidatorRegistryV2{value: 3 ether}(
                 1643,
                 1643,
                 address(verifier),
@@ -143,6 +143,55 @@ contract XGRNativeInterchainISMV2Test is Test {
             _bytes(256, 0x55)
         );
         assertTrue(eipISM.verify(metadata, _message(42161, 1643)));
+    }
+
+    function testPreviousSetCheckpointRemainsVerifiableAfterMembershipChange() public {
+        registry.applyMembership{value: 1 ether}(
+            XGRInterchainValidatorRegistryV2.MembershipTransition({
+                expectedSetId: 1,
+                validUntil: uint64(block.timestamp + 5 minutes),
+                action: 1,
+                validator: address(0xD4),
+                blsPublicKey: _bytes(48, 0x64),
+                blsPublicKeyEIP2537: _bytes(128, 0x74)
+            }),
+            hex"03",
+            _bytes(96, 0x66)
+        );
+
+        assertEq(registry.setId(), 2);
+
+        bytes memory oldSetMetadata = abi.encode(
+            uint32(0),
+            _singleLeafProof(),
+            uint32(0),
+            uint64(1),
+            hex"03",
+            _bytes(96, 0x44)
+        );
+        assertTrue(ism.verify(oldSetMetadata, _message(8453, 1643)));
+
+        bytes memory currentSetMetadata = abi.encode(
+            uint32(0),
+            _singleLeafProof(),
+            uint32(0),
+            uint64(2),
+            hex"07",
+            _bytes(96, 0x45)
+        );
+        assertTrue(ism.verify(currentSetMetadata, _message(8453, 1643)));
+    }
+
+    function testUnknownHistoricalSetRejected() public view {
+        bytes memory metadata = abi.encode(
+            uint32(0),
+            _singleLeafProof(),
+            uint32(0),
+            uint64(999),
+            hex"03",
+            _bytes(96, 0x44)
+        );
+        assertFalse(ism.verify(metadata, _message(8453, 1643)));
     }
 
     function testWrongOriginRejected() public view {
