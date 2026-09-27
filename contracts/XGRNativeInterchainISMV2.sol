@@ -8,8 +8,8 @@ import {IXGRInterchainBLSVerifier} from "./XGRInterchainValidatorRegistry.sol";
 ///         interchain BLS validator subset.
 /// @dev The relayer is untrusted. It supplies only the message inclusion proof
 ///      and an already-completed XGR quorum attestation. The ISM reconstructs
-///      the signed checkpoint payload and verifies it against the current
-///      destination registry set.
+///      the signed checkpoint payload and verifies it against the immutable
+///      destination registry snapshot identified by metadata setId.
 ///
 /// Metadata ABI:
 /// abi.encode(
@@ -126,11 +126,11 @@ contract XGRNativeInterchainISMV2 {
         (
             address[] memory validators,
             bytes[] memory publicKeys,
-            uint64 currentSetId
-        ) = registry.getValidatorSetForVerification();
+            uint64 resolvedSetId
+        ) = registry.getValidatorSetForVerification(metadataSetId);
 
         if (
-            currentSetId != metadataSetId ||
+            resolvedSetId != metadataSetId ||
             validators.length == 0 ||
             validators.length != publicKeys.length
         ) return false;
@@ -141,7 +141,7 @@ contract XGRNativeInterchainISMV2 {
         }
 
         bytes memory checkpointPayload = encodeCheckpointPayload(
-            currentSetId,
+            metadataSetId,
             signedRoot,
             checkpointIndex
         );
