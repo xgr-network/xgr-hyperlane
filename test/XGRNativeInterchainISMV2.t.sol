@@ -112,7 +112,7 @@ contract XGRNativeInterchainISMV2Test is Test {
             proofs[i] = _bytes(256, uint8(i + 51));
         }
 
-        XGRInterchainValidatorRegistryV2 registry =
+        XGRInterchainValidatorRegistryV2 eipRegistry =
             new XGRInterchainValidatorRegistryV2{value: 3 ether}(
                 1643,
                 1643,
@@ -127,7 +127,7 @@ contract XGRNativeInterchainISMV2Test is Test {
             );
 
         XGRNativeInterchainISMV2 eipISM = new XGRNativeInterchainISMV2(
-            address(registry),
+            address(eipRegistry),
             42161,
             42161,
             ORIGIN_MAILBOX,
