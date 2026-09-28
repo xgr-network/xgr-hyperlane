@@ -7,8 +7,8 @@ import {XGRNativeInterchainISMV2} from "../contracts/XGRNativeInterchainISMV2.so
 
 /// @notice Deploys the reverse Base -> XGR validator registry on XGR mainnet.
 /// @dev Public validator keys and possession proofs are intentionally embedded.
-///      The deployer private key is read from DEPLOYER_PRIVATE_KEY at runtime and
-///      must never be committed.
+///      Signing is supplied by Foundry at runtime (for example via --account);
+///      no private key is read from an environment variable.
 contract DeployReverseRegistryV2 is Script {
     uint64 internal constant XGR_CHAIN_ID = 1643;
     uint32 internal constant XGR_DOMAIN = 1643;
@@ -20,8 +20,6 @@ contract DeployReverseRegistryV2 is Script {
     uint256 internal constant MAX_EXECUTOR_REIMBURSEMENT_WEI = 0.5 ether;
 
     function run() external returns (XGRInterchainValidatorRegistryV2 registry) {
-        uint256 deployerPrivateKey = vm.envUint("DEPLOYER_PRIVATE_KEY");
-
         address[] memory validators = new address[](3);
         bytes[] memory compressedKeys = new bytes[](3);
         bytes[] memory eip2537Keys = new bytes[](3);
@@ -43,7 +41,7 @@ contract DeployReverseRegistryV2 is Script {
         eip2537Keys[2] = hex"00000000000000000000000000000000156b72d028aa6d063d36917f9f18a3ee4b216e22694a701814af4fd55e6cbbe99209fc1359012e4733987ebdd0123e88000000000000000000000000000000000ff4b97c544a6915099d22d4b5abb6b35a3290cba39def4a1a8b902df5d94d9bc6bd98fe2f183e24fa16e41072de97fc";
         possessionProofs[2] = hex"a37fcc2668f5613990bbded924f361d423d70b4d7bf3504bcf1e9c2159cd2d99e3cb87f794beae5c5cf53b6b92fd82a905d003fe47b48dccf83bc59f25542456da92eefc6ae1f12e4485a39459d5c20d14fb75b97dacdf5ac6101017c1db1386";
 
-        vm.startBroadcast(deployerPrivateKey);
+        vm.startBroadcast();
         registry = new XGRInterchainValidatorRegistryV2{value: 3 ether}(
             XGR_CHAIN_ID,
             XGR_DOMAIN,
@@ -73,10 +71,9 @@ contract DeployReverseISMV2 is Script {
         0x19dc38aeae620380430C200a6E990D5Af5480117;
 
     function run() external returns (XGRNativeInterchainISMV2 ism) {
-        uint256 deployerPrivateKey = vm.envUint("DEPLOYER_PRIVATE_KEY");
         address registry = vm.envAddress("REGISTRY_V2");
 
-        vm.startBroadcast(deployerPrivateKey);
+        vm.startBroadcast();
         ism = new XGRNativeInterchainISMV2(
             registry,
             BASE_CHAIN_ID,
