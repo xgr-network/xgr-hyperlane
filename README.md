@@ -79,6 +79,7 @@ committed.
 
 - [Architecture](docs/architecture.md)
 - [Operations and rollout](docs/operations.md)
+- [Deployment inventory](docs/DEPLOYMENTS.md)
 - [Security policy](SECURITY.md)
 
 ## Official XGR resources
