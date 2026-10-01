@@ -10,25 +10,40 @@ outages must never stop XGR block production, validation, finalization or sync.
 
 ## XGR node environment
 
-For XGRChain mainnet:
+The canonical non-secret mainnet reference is
+`runtime/xgr-node-interchain-mainnet.env.example`.
 
-```bash
-XGR_INTERCHAIN_ORIGIN_MAILBOX_ADDR=0x5632409bc2f0e8bAc4AaF43654D4FFc7822C9c79
-XGR_INTERCHAIN_ORIGIN_MERKLE_TREE_HOOK_ADDR=0xeD98Af715b5a72dCD412567eb086d48225CDDACF
-```
+The production nodes load these values from `/etc/xgrchain/node.conf`. The
+node process is managed by `/home/xgradmin/xgrchain/bin/nodectl.sh`.
 
-Each destination uses:
+Both directions must be configured explicitly. Once any
+`XGR_INTERCHAIN_ROUTE_<NAME>_*` route exists, the node stops synthesizing the
+legacy local destination routes. Therefore never add `BASE_TO_XGR` without
+also preserving `XGR_TO_BASE`.
+
+Forward route:
 
 ```text
-XGR_INTERCHAIN_<NAME>_CHAIN_ID
-XGR_INTERCHAIN_<NAME>_DOMAIN
-XGR_INTERCHAIN_<NAME>_REGISTRY_ADDR
-XGR_INTERCHAIN_<NAME>_RPC
-XGR_INTERCHAIN_<NAME>_DEACTIVATION_RESERVE_WEI
-XGR_INTERCHAIN_<NAME>_CONFIRMATIONS
-XGR_INTERCHAIN_<NAME>_MEMBERSHIP_VALIDITY_SECONDS
-XGR_INTERCHAIN_<NAME>_EXECUTOR_STEP_DELAY_SECONDS
+XGR_INTERCHAIN_ROUTE_XGR_TO_BASE_DESTINATION=base
+XGR_INTERCHAIN_ROUTE_XGR_TO_BASE_SOURCE_TYPE=local
 ```
+
+Reverse route:
+
+```text
+XGR_INTERCHAIN_ROUTE_BASE_TO_XGR_DESTINATION=xgr
+XGR_INTERCHAIN_ROUTE_BASE_TO_XGR_SOURCE_TYPE=evm
+XGR_INTERCHAIN_ROUTE_BASE_TO_XGR_SOURCE_CHAIN_ID=8453
+XGR_INTERCHAIN_ROUTE_BASE_TO_XGR_SOURCE_DOMAIN=8453
+XGR_INTERCHAIN_ROUTE_BASE_TO_XGR_SOURCE_RPC=https://base.publicnode.com
+XGR_INTERCHAIN_ROUTE_BASE_TO_XGR_SOURCE_MAILBOX_ADDR=0xeA87ae93Fa0019a82A727bfd3eBd1cFCa8f64f1D
+XGR_INTERCHAIN_ROUTE_BASE_TO_XGR_SOURCE_MERKLE_TREE_HOOK_ADDR=0x19dc38aeae620380430C200a6E990D5Af5480117
+XGR_INTERCHAIN_ROUTE_BASE_TO_XGR_SOURCE_CONFIRMATIONS=12
+```
+
+The reverse destination is XGRChain itself and uses RegistryV2
+`0x013F2F2f7dB897F941b19C4ab71C5395a48A0292` with
+`XGR_INTERCHAIN_XGR_VERIFIER_FORMAT=compressed`.
 
 ## Bootstrap sequence
 
@@ -72,24 +87,36 @@ completed attestations from any XGR 3.0 RPC endpoint.
 
 The production runtime no longer starts a Hyperlane validator.
 
-`runtime/native-relayer` uses the existing Hyperlane Mailbox and MerkleTreeHook,
-but obtains security metadata from XGR 3.0 native attestations.
+`runtime/native-relayer` is route-generic. The existing forward deployment may
+continue using the legacy `XGR_*` origin variables. Reverse uses
+`runtime/.env.relayer.reverse.example` and the attestation route
+`base_to_xgr`.
+
+Forward metadata uses the EIP-2537 aggregate signature. Reverse metadata uses
+`aggregateSignatureCompressed`, matching RegistryV2 verifier format 1.
 
 The relayer key only pays destination gas. Compromise of that key cannot produce
 a valid XGR BLS quorum proof.
 
-Before starting:
+For bidirectional operation:
 
 ```bash
 cd runtime
-cp .env.relayer.example .env.relayer
-# fill destination gas key and RPC values
-docker compose up -d --build
+cp .env.relayer.reverse.example .env.relayer.reverse
+# set RELAYER_PRIVATE_KEY and ORIGIN_START_BLOCK before first start
+docker compose -f docker-compose.bidirectional.yml up -d --build
 ```
 
+A fresh reverse state does not replay the full Base Hyperlane history. It reads
+`MerkleTreeHook.tree()` at `ORIGIN_START_BLOCK - 1` and indexes only later
+leaves. Set `ORIGIN_START_BLOCK` to Base head + 1 immediately before the first
+start, and do not send the first Base -> XGR test message until the reverse
+container has logged `native_relayer_state_bootstrapped`.
+
 The relayer reconstructs the 32-level Hyperlane Merkle proof and checks that its
-computed root exactly equals the attested root before submitting the destination
-transaction.
+computed root exactly equals the XGR-validator-attested root before submitting
+the destination transaction. When no destination-bound messages remain, it
+periodically compacts its state back to an on-chain tree snapshot.
 
 ## Validator lifecycle operations
 
