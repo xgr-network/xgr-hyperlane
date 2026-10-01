@@ -7,6 +7,7 @@ import {
   Wallet,
   concat,
   getAddress,
+  getBytes,
   keccak256,
   solidityPacked,
 } from "ethers";
@@ -17,28 +18,101 @@ const env = (name, fallback = undefined) => {
   return value;
 };
 
-const XGR_RPC_URL = env("XGR_RPC_URL");
+const legacy = (name) => process.env[name];
+
+// Generic route configuration. Legacy XGR_* origin variables remain accepted so
+// an existing XGR -> Base deployment can upgrade without rewriting its env file.
+const ORIGIN_RPC_URL = env("ORIGIN_RPC_URL", legacy("XGR_RPC_URL"));
+const ORIGIN_CHAIN_ID = BigInt(
+  env("ORIGIN_CHAIN_ID", legacy("XGR_CHAIN_ID") ?? "1643"),
+);
+const ORIGIN_DOMAIN = Number(
+  env("ORIGIN_DOMAIN", legacy("XGR_DOMAIN") ?? String(ORIGIN_CHAIN_ID)),
+);
+const ORIGIN_MAILBOX = getAddress(
+  env("ORIGIN_MAILBOX", legacy("XGR_MAILBOX")),
+);
+const ORIGIN_MERKLE_TREE_HOOK = getAddress(
+  env("ORIGIN_MERKLE_TREE_HOOK", legacy("XGR_MERKLE_TREE_HOOK")),
+);
+
+const ATTESTATION_RPC_URL = env(
+  "ATTESTATION_RPC_URL",
+  legacy("XGR_RPC_URL"),
+);
+const ATTESTATION_CHAIN_ID = BigInt(
+  env("ATTESTATION_CHAIN_ID", legacy("XGR_CHAIN_ID") ?? "1643"),
+);
+const ATTESTATION_ROUTE = env(
+  "ATTESTATION_ROUTE",
+  legacy("XGR_ATTESTATION_DESTINATION") ?? "base",
+);
+const ATTESTATION_SIGNATURE_FORMAT = env(
+  "ATTESTATION_SIGNATURE_FORMAT",
+  "eip2537",
+).toLowerCase();
+if (
+  ATTESTATION_SIGNATURE_FORMAT !== "eip2537" &&
+  ATTESTATION_SIGNATURE_FORMAT !== "compressed"
+) {
+  throw new Error(
+    "ATTESTATION_SIGNATURE_FORMAT must be eip2537 or compressed",
+  );
+}
+
 const DESTINATION_RPC_URL = env("DESTINATION_RPC_URL");
-const XGR_MAILBOX = getAddress(env("XGR_MAILBOX"));
-const XGR_MERKLE_TREE_HOOK = getAddress(env("XGR_MERKLE_TREE_HOOK"));
+const DESTINATION_CHAIN_ID = BigInt(env("DESTINATION_CHAIN_ID"));
+const DESTINATION_DOMAIN = Number(env("DESTINATION_DOMAIN"));
 const DESTINATION_MAILBOX = getAddress(env("DESTINATION_MAILBOX"));
 const RELAYER_PRIVATE_KEY = env("RELAYER_PRIVATE_KEY");
-const ATTESTATION_DESTINATION = env("XGR_ATTESTATION_DESTINATION", "base");
 
-const ORIGIN_CHAIN_ID = BigInt(env("XGR_CHAIN_ID", "1643"));
-const ORIGIN_DOMAIN = Number(env("XGR_DOMAIN", "1643"));
-const DESTINATION_CHAIN_ID = BigInt(env("DESTINATION_CHAIN_ID", "8453"));
-const DESTINATION_DOMAIN = Number(env("DESTINATION_DOMAIN", "8453"));
-
-const START_BLOCK = Number(env("XGR_START_BLOCK", "0"));
-const CONFIRMATIONS = Number(env("XGR_CONFIRMATIONS", "1"));
+const START_BLOCK = Number(
+  env("ORIGIN_START_BLOCK", legacy("XGR_START_BLOCK") ?? "0"),
+);
+const CONFIRMATIONS = Number(
+  env("ORIGIN_CONFIRMATIONS", legacy("XGR_CONFIRMATIONS") ?? "1"),
+);
 const POLL_MS = Number(env("POLL_INTERVAL_MS", "3000"));
-const LOG_CHUNK = Number(env("XGR_LOG_CHUNK", "2000"));
-const STATE_PATH = env("RELAYER_STATE_PATH", "/data/native-relayer-state.json");
+const LOG_CHUNK = Number(
+  env("ORIGIN_LOG_CHUNK", legacy("XGR_LOG_CHUNK") ?? "2000"),
+);
+const STATE_PATH = env(
+  "RELAYER_STATE_PATH",
+  "/data/native-relayer-state.json",
+);
 
-const xgr = new JsonRpcProvider(XGR_RPC_URL, Number(ORIGIN_CHAIN_ID), {
-  staticNetwork: true,
-});
+for (const [name, value] of [
+  ["ORIGIN_DOMAIN", ORIGIN_DOMAIN],
+  ["DESTINATION_DOMAIN", DESTINATION_DOMAIN],
+  ["ORIGIN_START_BLOCK", START_BLOCK],
+  ["ORIGIN_CONFIRMATIONS", CONFIRMATIONS],
+  ["ORIGIN_LOG_CHUNK", LOG_CHUNK],
+  ["POLL_INTERVAL_MS", POLL_MS],
+]) {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new Error(`${name} must be a non-negative safe integer`);
+  }
+}
+if (CONFIRMATIONS < 1) {
+  throw new Error("ORIGIN_CONFIRMATIONS must be at least 1");
+}
+if (LOG_CHUNK < 1) {
+  throw new Error("ORIGIN_LOG_CHUNK must be at least 1");
+}
+if (POLL_MS < 250) {
+  throw new Error("POLL_INTERVAL_MS must be at least 250");
+}
+
+const origin = new JsonRpcProvider(
+  ORIGIN_RPC_URL,
+  Number(ORIGIN_CHAIN_ID),
+  { staticNetwork: true },
+);
+const attestationProvider = new JsonRpcProvider(
+  ATTESTATION_RPC_URL,
+  Number(ATTESTATION_CHAIN_ID),
+  { staticNetwork: true },
+);
 const destinationProvider = new JsonRpcProvider(
   DESTINATION_RPC_URL,
   Number(DESTINATION_CHAIN_ID),
@@ -55,9 +129,13 @@ const hookAbi = [
   "event InsertedIntoTree(bytes32 messageId,uint32 index)",
 ];
 
-const xgrMailbox = new Contract(XGR_MAILBOX, mailboxAbi, xgr);
-const hook = new Contract(XGR_MERKLE_TREE_HOOK, hookAbi, xgr);
-const destinationMailbox = new Contract(DESTINATION_MAILBOX, mailboxAbi, wallet);
+const originMailbox = new Contract(ORIGIN_MAILBOX, mailboxAbi, origin);
+const originHook = new Contract(ORIGIN_MERKLE_TREE_HOOK, hookAbi, origin);
+const destinationMailbox = new Contract(
+  DESTINATION_MAILBOX,
+  mailboxAbi,
+  wallet,
+);
 const coder = AbiCoder.defaultAbiCoder();
 
 const lower = (value) => String(value).toLowerCase();
@@ -65,7 +143,16 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function loadState() {
   try {
-    return JSON.parse(fs.readFileSync(STATE_PATH, "utf8"));
+    const state = JSON.parse(fs.readFileSync(STATE_PATH, "utf8"));
+    if (!Number.isSafeInteger(state.nextBlock) || state.nextBlock < 0) {
+      throw new Error("relayer state nextBlock is invalid");
+    }
+    if (!Array.isArray(state.leaves)) {
+      throw new Error("relayer state leaves is invalid");
+    }
+    state.indices ??= {};
+    state.messages ??= {};
+    return state;
   } catch (err) {
     if (err.code !== "ENOENT") throw err;
     return {
@@ -141,13 +228,21 @@ function branchRoot(leaf, proof, index) {
 }
 
 async function assertNetworks() {
-  const [originNetwork, destinationNetwork] = await Promise.all([
-    xgr.getNetwork(),
-    destinationProvider.getNetwork(),
-  ]);
+  const [originNetwork, attestationNetwork, destinationNetwork] =
+    await Promise.all([
+      origin.getNetwork(),
+      attestationProvider.getNetwork(),
+      destinationProvider.getNetwork(),
+    ]);
+
   if (originNetwork.chainId !== ORIGIN_CHAIN_ID) {
     throw new Error(
-      `XGR RPC chain id mismatch: got ${originNetwork.chainId}, expected ${ORIGIN_CHAIN_ID}`,
+      `origin RPC chain id mismatch: got ${originNetwork.chainId}, expected ${ORIGIN_CHAIN_ID}`,
+    );
+  }
+  if (attestationNetwork.chainId !== ATTESTATION_CHAIN_ID) {
+    throw new Error(
+      `attestation RPC chain id mismatch: got ${attestationNetwork.chainId}, expected ${ATTESTATION_CHAIN_ID}`,
     );
   }
   if (destinationNetwork.chainId !== DESTINATION_CHAIN_ID) {
@@ -158,15 +253,15 @@ async function assertNetworks() {
 }
 
 async function scanOrigin(state) {
-  const head = await xgr.getBlockNumber();
+  const head = await origin.getBlockNumber();
   const confirmedHead = head - CONFIRMATIONS;
   if (confirmedHead < state.nextBlock) return;
 
   for (let from = state.nextBlock; from <= confirmedHead; from += LOG_CHUNK) {
     const to = Math.min(from + LOG_CHUNK - 1, confirmedHead);
     const [dispatches, inserts] = await Promise.all([
-      xgrMailbox.queryFilter(xgrMailbox.filters.Dispatch(), from, to),
-      hook.queryFilter(hook.filters.InsertedIntoTree(), from, to),
+      originMailbox.queryFilter(originMailbox.filters.Dispatch(), from, to),
+      originHook.queryFilter(originHook.filters.InsertedIntoTree(), from, to),
     ]);
 
     for (const event of dispatches) {
@@ -199,21 +294,60 @@ async function scanOrigin(state) {
   }
 }
 
-async function getAttestation() {
-  const attestation = await xgr.send("xgr_getInterchainAttestation", [
-    ATTESTATION_DESTINATION,
-  ]);
+function aggregateSignature(attestation) {
+  const signature =
+    ATTESTATION_SIGNATURE_FORMAT === "compressed"
+      ? attestation.aggregateSignatureCompressed
+      : attestation.aggregateSignature;
 
+  if (!signature) {
+    throw new Error(
+      `attestation is missing ${ATTESTATION_SIGNATURE_FORMAT} aggregate signature`,
+    );
+  }
+
+  const expectedLength =
+    ATTESTATION_SIGNATURE_FORMAT === "compressed" ? 96 : 256;
+  const actualLength = getBytes(signature).length;
+  if (actualLength !== expectedLength) {
+    throw new Error(
+      `unexpected ${ATTESTATION_SIGNATURE_FORMAT} aggregate signature length: got ${actualLength}, expected ${expectedLength}`,
+    );
+  }
+  return signature;
+}
+
+async function getAttestation() {
+  const attestation = await attestationProvider.send(
+    "xgr_getInterchainAttestation",
+    [ATTESTATION_ROUTE],
+  );
+
+  if (
+    attestation.chain &&
+    lower(attestation.chain) !== lower(ATTESTATION_ROUTE)
+  ) {
+    throw new Error("attestation route mismatch");
+  }
   if (BigInt(attestation.originChainId) !== ORIGIN_CHAIN_ID) {
     throw new Error("attestation origin chain id mismatch");
+  }
+  if (
+    attestation.originDomain !== undefined &&
+    Number(attestation.originDomain) !== ORIGIN_DOMAIN
+  ) {
+    throw new Error("attestation origin domain mismatch");
   }
   if (Number(attestation.destinationDomain) !== DESTINATION_DOMAIN) {
     throw new Error("attestation destination domain mismatch");
   }
-  if (lower(attestation.mailbox) !== lower(XGR_MAILBOX)) {
+  if (lower(attestation.mailbox) !== lower(ORIGIN_MAILBOX)) {
     throw new Error("attestation mailbox mismatch");
   }
-  if (lower(attestation.merkleTreeHook) !== lower(XGR_MERKLE_TREE_HOOK)) {
+  if (
+    lower(attestation.merkleTreeHook) !==
+    lower(ORIGIN_MERKLE_TREE_HOOK)
+  ) {
     throw new Error("attestation merkle tree hook mismatch");
   }
 
@@ -233,8 +367,8 @@ async function getAttestation() {
       ORIGIN_CHAIN_ID,
       DESTINATION_DOMAIN,
       BigInt(attestation.setId),
-      XGR_MAILBOX,
-      XGR_MERKLE_TREE_HOOK,
+      ORIGIN_MAILBOX,
+      ORIGIN_MERKLE_TREE_HOOK,
       attestation.root,
       Number(attestation.index),
     ],
@@ -243,6 +377,7 @@ async function getAttestation() {
     throw new Error("attestation canonical payload mismatch");
   }
 
+  aggregateSignature(attestation);
   return attestation;
 }
 
@@ -268,7 +403,7 @@ function buildMetadata(state, id, attestation) {
       checkpointIndex,
       BigInt(attestation.setId),
       attestation.signerBitmap,
-      attestation.aggregateSignature,
+      aggregateSignature(attestation),
     ],
   );
 }
@@ -298,13 +433,18 @@ async function relayAvailable(state) {
     console.log(
       JSON.stringify({
         event: "relay_submitted",
+        route: ATTESTATION_ROUTE,
         messageId: id,
         checkpointIndex: Number(attestation.index),
         setId: String(attestation.setId),
+        signatureFormat: ATTESTATION_SIGNATURE_FORMAT,
         txHash: tx.hash,
       }),
     );
-    await tx.wait();
+    const receipt = await tx.wait();
+    if (!receipt || receipt.status !== 1) {
+      throw new Error(`destination process failed for ${id}`);
+    }
 
     delete state.messages[id];
     saveState(state);
@@ -318,8 +458,13 @@ async function main() {
   console.log(
     JSON.stringify({
       event: "native_relayer_started",
+      route: ATTESTATION_ROUTE,
+      originChainId: String(ORIGIN_CHAIN_ID),
       originDomain: ORIGIN_DOMAIN,
+      destinationChainId: String(DESTINATION_CHAIN_ID),
       destinationDomain: DESTINATION_DOMAIN,
+      attestationChainId: String(ATTESTATION_CHAIN_ID),
+      signatureFormat: ATTESTATION_SIGNATURE_FORMAT,
       relayer: wallet.address,
       nextBlock: state.nextBlock,
     }),
@@ -333,6 +478,7 @@ async function main() {
       console.error(
         JSON.stringify({
           event: "native_relayer_error",
+          route: ATTESTATION_ROUTE,
           error: err instanceof Error ? err.message : String(err),
         }),
       );
