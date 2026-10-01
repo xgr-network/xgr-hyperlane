@@ -8,10 +8,14 @@ mkdir -p "$STATE_DIR"
 
 env_file() {
   case "$1" in
-    forward) printf '%s
-' "$RUNTIME_DIR/.env.relayer" ;;
-    reverse) printf '%s
-' "$RUNTIME_DIR/.env.relayer.reverse" ;;
+    forward)
+      if [ -f "$RUNTIME_DIR/.env.relayer" ]; then
+        printf '%s\n' "$RUNTIME_DIR/.env.relayer"
+      else
+        printf '%s\n' "$RUNTIME_DIR/relayer-forward-mainnet.env"
+      fi
+      ;;
+    reverse) printf '%s\n' "$RUNTIME_DIR/.env.relayer.reverse" ;;
     *) return 1 ;;
   esac
 }
@@ -73,6 +77,16 @@ start_one() {
     set -a
     . "$ef"
     set +a
+
+    if [ -z "${RELAYER_PRIVATE_KEY:-}" ]; then
+      if [ -z "${RELAYER_KEY_ACCOUNT:-}" ]; then
+        echo "missing RELAYER_PRIVATE_KEY or RELAYER_KEY_ACCOUNT in $ef" >&2
+        exit 1
+      fi
+      RELAYER_PRIVATE_KEY="$(cast wallet private-key --account "$RELAYER_KEY_ACCOUNT")" || exit 1
+      export RELAYER_PRIVATE_KEY
+    fi
+
     nohup node "$SCRIPT" >> "$lf" 2>&1 &
     echo $! > "$pf"
   )
