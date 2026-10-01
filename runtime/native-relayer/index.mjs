@@ -88,6 +88,11 @@ const STATE_PATH = env(
   "RELAYER_STATE_PATH",
   "/data/native-relayer-state.json",
 );
+const RELAYER_SUBMIT_RAW = env("RELAYER_SUBMIT", "true").toLowerCase();
+if (RELAYER_SUBMIT_RAW !== "true" && RELAYER_SUBMIT_RAW !== "false") {
+  throw new Error("RELAYER_SUBMIT must be true or false");
+}
+const RELAYER_SUBMIT = RELAYER_SUBMIT_RAW === "true";
 
 for (const [name, value] of [
   ["ORIGIN_DOMAIN", ORIGIN_DOMAIN],
@@ -164,6 +169,7 @@ const coder = AbiCoder.defaultAbiCoder();
 
 const lower = (value) => String(value).toLowerCase();
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const observedReady = new Set();
 
 function validateState(state) {
   if (!Number.isSafeInteger(state.nextBlock) || state.nextBlock < 1) {
@@ -500,6 +506,25 @@ async function relayAvailable(state) {
     const metadata = buildMetadata(state, id, attestation);
     if (!metadata) continue;
 
+    if (!RELAYER_SUBMIT) {
+      const observationKey = `${id}:${attestation.index}:${attestation.root}`;
+      if (!observedReady.has(observationKey)) {
+        observedReady.add(observationKey);
+        console.log(
+          JSON.stringify({
+            event: "relay_ready_observe_only",
+            route: ATTESTATION_ROUTE,
+            messageId: id,
+            checkpointIndex: Number(attestation.index),
+            setId: String(attestation.setId),
+            signatureFormat: ATTESTATION_SIGNATURE_FORMAT,
+            metadataBytes: getBytes(metadata).length,
+          }),
+        );
+      }
+      continue;
+    }
+
     const tx = await destinationMailbox.process(metadata, message);
     console.log(
       JSON.stringify({
@@ -544,6 +569,7 @@ async function main() {
       destinationDomain: DESTINATION_DOMAIN,
       attestationChainId: String(ATTESTATION_CHAIN_ID),
       signatureFormat: ATTESTATION_SIGNATURE_FORMAT,
+      submitEnabled: RELAYER_SUBMIT,
       relayer: wallet.address,
       nextBlock: state.nextBlock,
       snapshotCount: state.snapshotCount,
