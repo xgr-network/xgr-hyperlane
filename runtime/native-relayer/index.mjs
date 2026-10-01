@@ -271,9 +271,9 @@ async function loadState() {
   }
 }
 
-async function compactState(state) {
+async function compactState(state, force = false) {
   if (Object.keys(state.messages).length !== 0) return;
-  if (state.treeCount - state.snapshotCount < COMPACT_AFTER_LEAVES) return;
+  if (!force && state.treeCount - state.snapshotCount < COMPACT_AFTER_LEAVES) return;
 
   const snapshotBlock = state.nextBlock - 1;
   const { branch, count } = await readTreeSnapshot(snapshotBlock);
@@ -527,7 +527,7 @@ async function relayAvailable(state) {
   if (deliveredAny && Object.keys(state.messages).length === 0) {
     // Compact immediately after clearing pending work; this bounds Base-origin
     // state even when the canonical Hyperlane tree is very busy.
-    state.snapshotCount = Math.min(state.snapshotCount, state.treeCount - COMPACT_AFTER_LEAVES);
+    await compactState(state, true);
   }
 }
 
