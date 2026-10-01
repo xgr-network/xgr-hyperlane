@@ -191,14 +191,20 @@ Historical verification snapshot **set 1** was also read back successfully and m
 | Field | Value |
 | --- | --- |
 | Chain | XGRChain Mainnet 1643 |
-| Address | **pending** |
-| Status | **pending deployment** |
+| Address | `0x3b83687d77170D42feDDFe221629cc21e771E021` |
+| Status | **staged** |
+| Deployment TX | `0x6dbadb839dd1765f86455965a5fa237b73e9221ce77d332c5b60dca88f7c0708` |
+| Deployment block | **11,070,512** |
+| Gas used | **915,844** |
+| Deployer | `0x6a6415Aa1c945Ee437336c136c2de9E8baB1F05E` |
 | Registry | `0x013F2F2f7dB897F941b19C4ab71C5395a48A0292` |
+| membershipOriginChainId | **1643** via registry |
 | checkpointOriginChainId | **8453** |
 | originDomain | **8453** |
 | originMailbox | `0xeA87ae93Fa0019a82A727bfd3eBd1cFCa8f64f1D` |
 | originMerkleTreeHook | `0x19dc38aeae620380430C200a6E990D5Af5480117` |
 | destinationDomain | **1643** via registry |
+| verifier | `0x0000000000000000000000000000000000002040` via registry |
 
 The V2 contract suite was tested locally before the RegistryV2 deployment:
 
@@ -310,7 +316,7 @@ Dynamic XRC-137 / XRC-729 artifacts are intentionally **not** listed as canonica
 3. Several early Hyperlane-core deployment transaction hashes were not preserved in the project chats.
 4. The Base synthetic router deployment transaction hash was not recovered from the project chat history.
 5. Safe deployment transaction hashes are incomplete in the project conversation history.
-6. XGRNativeInterchainISMV2 is still pending; add its address, transaction, block and source commit immediately after deployment.
+6. XGRNativeInterchainISMV2 was deployed on 2026-10-01 and is staged; it is not yet wired into DomainRoutingISM.
 7. When the reverse route is activated, record the DomainRoutingISM update transaction and exact module assignment here.
 8. When route/runtime configuration changes, also update the machine-readable manifests in `deployments/`.
 
