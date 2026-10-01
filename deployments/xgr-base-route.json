@@ -15,7 +15,16 @@
     "pausableIsmPaused": true,
     "reverseRegistryV2": "0x013F2F2f7dB897F941b19C4ab71C5395a48A0292",
     "reverseNativeIsmV2": "0x3b83687d77170D42feDDFe221629cc21e771E021",
-    "routingUpdateTx": "0x6f94a1652effdc487bf36ea51c47401536b5a06be64fd6e224cbbb53f897850f"
+    "routingUpdateTx": "0x6f94a1652effdc487bf36ea51c47401536b5a06be64fd6e224cbbb53f897850f",
+    "reverseRuntime": {
+      "validatorsConfigured": 3,
+      "attestationRoute": "base_to_xgr",
+      "attestationSetId": 1,
+      "observedCheckpointIndex": 2183749,
+      "observedSignerBitmap": "0x07",
+      "allThreeValidatorsObserved": true,
+      "status": "attestation_ready_delivery_paused"
+    }
   },
   "base": {
     "domainId": 8453,
