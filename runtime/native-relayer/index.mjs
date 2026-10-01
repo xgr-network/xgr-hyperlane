@@ -111,12 +111,6 @@ if (LOG_CHUNK < 1) {
 if (POLL_MS < 250) {
   throw new Error("POLL_INTERVAL_MS must be at least 250");
 }
-if (START_BLOCK < 1) {
-  throw new Error(
-    "ORIGIN_START_BLOCK must be at least 1 so the MerkleTreeHook can be snapshotted at the preceding block",
-  );
-}
-
 const origin = new JsonRpcProvider(
   ORIGIN_RPC_URL,
   Number(ORIGIN_CHAIN_ID),
@@ -207,6 +201,11 @@ async function readTreeSnapshot(blockTag) {
 }
 
 async function bootstrapState() {
+  if (START_BLOCK < 1) {
+    throw new Error(
+      "ORIGIN_START_BLOCK must be at least 1 for a fresh state so the MerkleTreeHook can be snapshotted at the preceding block",
+    );
+  }
   const snapshotBlock = START_BLOCK - 1;
   const { branch, count } = await readTreeSnapshot(snapshotBlock);
   return validateState({
