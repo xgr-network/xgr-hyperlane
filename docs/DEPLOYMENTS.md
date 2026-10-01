@@ -218,6 +218,27 @@ No DomainRoutingISM change has yet been made for this V2 path.
 
 ---
 
+## Reverse-path safety aggregation
+
+| Field | Value |
+| --- | --- |
+| Chain | XGRChain Mainnet 1643 |
+| Address | `0x35c2B8403a65D3bd2b86294BF1f26E13A246c05e` |
+| Status | **staged / fail-closed** |
+| Deployment factory | `0xFEBEa0a947349E0aC857F9b7b248f1027804438e` |
+| Deployment TX | `0xdc160be658e85ca4f1c34ee49b1e4e6ad3722f93f886f796f454af70c45e7e67` |
+| Deployment block | **11,070,639** |
+| Gas used | **108,300** |
+| Deployer | `0x6a6415Aa1c945Ee437336c136c2de9E8baB1F05E` |
+| Threshold | **2-of-2** |
+| Module 0 | PausableISM `0x1175F84765CFeA514ea1fd75162CFE8a6C64d4CA` |
+| Module 1 | XGRNativeInterchainISMV2 `0x3b83687d77170D42feDDFe221629cc21e771E021` |
+
+The address was predicted deterministically by the StaticAggregationIsmFactory before deployment. Code was confirmed on-chain at the predicted address. This aggregation is intended to replace the legacy Base-origin aggregation in DomainRoutingISM after the routing update. Because the PausableISM remains paused, the path remains fail-closed until an intentional unpause.
+
+
+---
+
 # External Hyperlane contracts on Base
 
 These are external dependencies used by the XGR route. They were not deployed by XGR.
@@ -317,7 +338,7 @@ Dynamic XRC-137 / XRC-729 artifacts are intentionally **not** listed as canonica
 4. The Base synthetic router deployment transaction hash was not recovered from the project chat history.
 5. Safe deployment transaction hashes are incomplete in the project conversation history.
 6. XGRNativeInterchainISMV2 was deployed on 2026-10-01 and is staged; it is not yet wired into DomainRoutingISM.
-7. When the reverse route is activated, record the DomainRoutingISM update transaction and exact module assignment here.
+7. Reverse-path safety aggregation is deployed; record the upcoming DomainRoutingISM update transaction and exact module assignment here.
 8. When route/runtime configuration changes, also update the machine-readable manifests in `deployments/`.
 
 ---
