@@ -5,12 +5,17 @@ import {
   Contract,
   JsonRpcProvider,
   Wallet,
-  concat,
   getAddress,
   getBytes,
   keccak256,
   solidityPacked,
 } from "ethers";
+import {
+  addLeaf,
+  branchRoot,
+  buildProofFromNodes,
+  snapshotNodes,
+} from "./merkle.mjs";
 
 const env = (name, fallback = undefined) => {
   const value = process.env[name] ?? fallback;
@@ -76,6 +81,9 @@ const POLL_MS = Number(env("POLL_INTERVAL_MS", "3000"));
 const LOG_CHUNK = Number(
   env("ORIGIN_LOG_CHUNK", legacy("XGR_LOG_CHUNK") ?? "2000"),
 );
+const COMPACT_AFTER_LEAVES = Number(
+  env("RELAYER_COMPACT_AFTER_LEAVES", "10000"),
+);
 const STATE_PATH = env(
   "RELAYER_STATE_PATH",
   "/data/native-relayer-state.json",
@@ -88,6 +96,7 @@ for (const [name, value] of [
   ["ORIGIN_CONFIRMATIONS", CONFIRMATIONS],
   ["ORIGIN_LOG_CHUNK", LOG_CHUNK],
   ["POLL_INTERVAL_MS", POLL_MS],
+  ["RELAYER_COMPACT_AFTER_LEAVES", COMPACT_AFTER_LEAVES],
 ]) {
   if (!Number.isSafeInteger(value) || value < 0) {
     throw new Error(`${name} must be a non-negative safe integer`);
@@ -101,6 +110,11 @@ if (LOG_CHUNK < 1) {
 }
 if (POLL_MS < 250) {
   throw new Error("POLL_INTERVAL_MS must be at least 250");
+}
+if (START_BLOCK < 1) {
+  throw new Error(
+    "ORIGIN_START_BLOCK must be at least 1 so the MerkleTreeHook can be snapshotted at the preceding block",
+  );
 }
 
 const origin = new JsonRpcProvider(
@@ -127,6 +141,22 @@ const mailboxAbi = [
 ];
 const hookAbi = [
   "event InsertedIntoTree(bytes32 messageId,uint32 index)",
+  {
+    type: "function",
+    name: "tree",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [
+      {
+        name: "",
+        type: "tuple",
+        components: [
+          { name: "branch", type: "bytes32[32]" },
+          { name: "count", type: "uint256" },
+        ],
+      },
+    ],
+  },
 ];
 
 const originMailbox = new Contract(ORIGIN_MAILBOX, mailboxAbi, origin);
@@ -141,27 +171,22 @@ const coder = AbiCoder.defaultAbiCoder();
 const lower = (value) => String(value).toLowerCase();
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-function loadState() {
-  try {
-    const state = JSON.parse(fs.readFileSync(STATE_PATH, "utf8"));
-    if (!Number.isSafeInteger(state.nextBlock) || state.nextBlock < 0) {
-      throw new Error("relayer state nextBlock is invalid");
-    }
-    if (!Array.isArray(state.leaves)) {
-      throw new Error("relayer state leaves is invalid");
-    }
-    state.indices ??= {};
-    state.messages ??= {};
-    return state;
-  } catch (err) {
-    if (err.code !== "ENOENT") throw err;
-    return {
-      nextBlock: START_BLOCK,
-      leaves: [],
-      indices: {},
-      messages: {},
-    };
+function validateState(state) {
+  if (!Number.isSafeInteger(state.nextBlock) || state.nextBlock < 1) {
+    throw new Error("relayer state nextBlock is invalid");
   }
+  if (!Number.isSafeInteger(state.treeCount) || state.treeCount < 0) {
+    throw new Error("relayer state treeCount is invalid");
+  }
+  if (!Number.isSafeInteger(state.snapshotCount) || state.snapshotCount < 0) {
+    throw new Error("relayer state snapshotCount is invalid");
+  }
+  if (!state.nodes || typeof state.nodes !== "object") {
+    throw new Error("relayer state nodes is invalid");
+  }
+  state.indices ??= {};
+  state.messages ??= {};
+  return state;
 }
 
 function saveState(state) {
@@ -171,60 +196,107 @@ function saveState(state) {
   fs.renameSync(tmp, STATE_PATH);
 }
 
-function zeroHashes() {
-  const values = [];
-  let current = "0x" + "00".repeat(32);
-  for (let i = 0; i < 32; i++) {
-    values.push(current);
-    current = keccak256(concat([current, current]));
+async function readTreeSnapshot(blockTag) {
+  const raw = await originHook.tree({ blockTag });
+  const branch = Array.from(raw.branch ?? raw[0]);
+  const count = Number(raw.count ?? raw[1]);
+  if (!Number.isSafeInteger(count) || count < 0) {
+    throw new Error("origin MerkleTreeHook returned invalid tree count");
   }
-  return values;
+  return { branch, count };
 }
 
-const ZERO_HASHES = zeroHashes();
+async function bootstrapState() {
+  const snapshotBlock = START_BLOCK - 1;
+  const { branch, count } = await readTreeSnapshot(snapshotBlock);
+  return validateState({
+    version: 2,
+    nextBlock: START_BLOCK,
+    snapshotBlock,
+    snapshotCount: count,
+    treeCount: count,
+    nodes: snapshotNodes(branch, count),
+    indices: {},
+    messages: {},
+  });
+}
 
-function buildProof(leaves, targetIndex, checkpointIndex) {
-  if (
-    targetIndex < 0 ||
-    checkpointIndex < targetIndex ||
-    checkpointIndex >= leaves.length
-  ) {
-    throw new Error("invalid proof bounds");
+function migrateLegacyState(legacyState) {
+  if (!Array.isArray(legacyState.leaves)) {
+    throw new Error("legacy relayer state leaves is invalid");
   }
+  const state = {
+    version: 2,
+    nextBlock: legacyState.nextBlock,
+    snapshotBlock: 0,
+    snapshotCount: 0,
+    treeCount: 0,
+    nodes: {},
+    indices: legacyState.indices ?? {},
+    messages: legacyState.messages ?? {},
+  };
+  for (let i = 0; i < legacyState.leaves.length; i++) {
+    addLeaf(state, i, legacyState.leaves[i]);
+  }
+  return validateState(state);
+}
 
-  let nodes = leaves.slice(0, checkpointIndex + 1);
-  let index = targetIndex;
-  const proof = [];
-
-  for (let level = 0; level < 32; level++) {
-    const siblingIndex = index ^ 1;
-    proof.push(
-      siblingIndex < nodes.length ? nodes[siblingIndex] : ZERO_HASHES[level],
+async function loadState() {
+  try {
+    const state = JSON.parse(fs.readFileSync(STATE_PATH, "utf8"));
+    if (state.version === 2) return validateState(state);
+    const migrated = migrateLegacyState(state);
+    saveState(migrated);
+    console.log(
+      JSON.stringify({
+        event: "native_relayer_state_migrated",
+        route: ATTESTATION_ROUTE,
+        treeCount: migrated.treeCount,
+      }),
     );
-
-    const parents = [];
-    for (let i = 0; i < nodes.length; i += 2) {
-      const left = nodes[i] ?? ZERO_HASHES[level];
-      const right = nodes[i + 1] ?? ZERO_HASHES[level];
-      parents.push(keccak256(concat([left, right])));
-    }
-    nodes = parents;
-    index = Math.floor(index / 2);
+    return migrated;
+  } catch (err) {
+    if (err.code !== "ENOENT") throw err;
+    const state = await bootstrapState();
+    saveState(state);
+    console.log(
+      JSON.stringify({
+        event: "native_relayer_state_bootstrapped",
+        route: ATTESTATION_ROUTE,
+        snapshotBlock: state.snapshotBlock,
+        snapshotCount: state.snapshotCount,
+      }),
+    );
+    return state;
   }
-
-  return proof;
 }
 
-function branchRoot(leaf, proof, index) {
-  let current = leaf;
-  const indexBits = BigInt(index);
-  for (let i = 0; i < 32; i++) {
-    current =
-      ((indexBits >> BigInt(i)) & 1n) === 1n
-        ? keccak256(concat([proof[i], current]))
-        : keccak256(concat([current, proof[i]]));
+async function compactState(state) {
+  if (Object.keys(state.messages).length !== 0) return;
+  if (state.treeCount - state.snapshotCount < COMPACT_AFTER_LEAVES) return;
+
+  const snapshotBlock = state.nextBlock - 1;
+  const { branch, count } = await readTreeSnapshot(snapshotBlock);
+  if (count !== state.treeCount) {
+    throw new Error(
+      `compaction tree count mismatch: rpc ${count}, indexed ${state.treeCount}`,
+    );
   }
-  return current;
+
+  state.snapshotBlock = snapshotBlock;
+  state.snapshotCount = count;
+  state.nodes = snapshotNodes(branch, count);
+  state.indices = {};
+  saveState(state);
+
+  console.log(
+    JSON.stringify({
+      event: "native_relayer_state_compacted",
+      route: ATTESTATION_ROUTE,
+      snapshotBlock,
+      snapshotCount: count,
+    }),
+  );
 }
 
 async function assertNetworks() {
@@ -275,18 +347,10 @@ async function scanOrigin(state) {
     for (const event of inserts) {
       const id = lower(event.args.messageId);
       const index = Number(event.args.index);
-      if (index < state.leaves.length) {
-        if (lower(state.leaves[index]) !== id) {
-          throw new Error(`merkle history mismatch at index ${index}`);
-        }
-      } else if (index === state.leaves.length) {
-        state.leaves.push(id);
-      } else {
-        throw new Error(
-          `merkle history gap: got index ${index}, expected ${state.leaves.length}`,
-        );
+      addLeaf(state, index, id);
+      if (state.messages[id] !== undefined) {
+        state.indices[id] = index;
       }
-      state.indices[id] = index;
     }
 
     state.nextBlock = to + 1;
@@ -385,9 +449,14 @@ function buildMetadata(state, id, attestation) {
   const messageIndex = state.indices[id];
   const checkpointIndex = Number(attestation.index);
   if (messageIndex === undefined || messageIndex > checkpointIndex) return null;
-  if (checkpointIndex >= state.leaves.length) return null;
+  if (checkpointIndex >= state.treeCount) return null;
 
-  const proof = buildProof(state.leaves, messageIndex, checkpointIndex);
+  const proof = buildProofFromNodes(
+    state.nodes,
+    messageIndex,
+    checkpointIndex,
+    state.snapshotCount,
+  );
   const root = branchRoot(id, proof, messageIndex);
   if (lower(root) !== lower(attestation.root)) {
     throw new Error(
@@ -417,11 +486,14 @@ async function relayAvailable(state) {
     throw err;
   }
 
+  let deliveredAny = false;
   for (const [id, message] of Object.entries(state.messages)) {
     if (state.indices[id] === undefined) continue;
 
     if (await destinationMailbox.delivered(id)) {
       delete state.messages[id];
+      delete state.indices[id];
+      deliveredAny = true;
       saveState(state);
       continue;
     }
@@ -447,13 +519,21 @@ async function relayAvailable(state) {
     }
 
     delete state.messages[id];
+    delete state.indices[id];
+    deliveredAny = true;
     saveState(state);
+  }
+
+  if (deliveredAny && Object.keys(state.messages).length === 0) {
+    // Compact immediately after clearing pending work; this bounds Base-origin
+    // state even when the canonical Hyperlane tree is very busy.
+    state.snapshotCount = Math.min(state.snapshotCount, state.treeCount - COMPACT_AFTER_LEAVES);
   }
 }
 
 async function main() {
   await assertNetworks();
-  const state = loadState();
+  const state = await loadState();
 
   console.log(
     JSON.stringify({
@@ -467,6 +547,8 @@ async function main() {
       signatureFormat: ATTESTATION_SIGNATURE_FORMAT,
       relayer: wallet.address,
       nextBlock: state.nextBlock,
+      snapshotCount: state.snapshotCount,
+      treeCount: state.treeCount,
     }),
   );
 
@@ -474,6 +556,7 @@ async function main() {
     try {
       await scanOrigin(state);
       await relayAvailable(state);
+      await compactState(state);
     } catch (err) {
       console.error(
         JSON.stringify({
