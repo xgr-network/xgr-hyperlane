@@ -330,6 +330,32 @@ Dynamic XRC-137 / XRC-729 artifacts are intentionally **not** listed as canonica
 
 ---
 
+## Reverse runtime status
+
+As of 2026-10-01 all three RegistryV2 interchain validators are configured with
+the explicit `xgr_to_base` local route and `base_to_xgr` external EVM route.
+
+Observed completed reverse attestation:
+
+- route: `base_to_xgr`
+- destination: `xgr`
+- origin chain/domain: Base `8453`
+- destination domain: XGRChain `1643`
+- RegistryV2 setId: `1`
+- Base Mailbox: `0xeA87ae93Fa0019a82A727bfd3eBd1cFCa8f64f1D`
+- Base MerkleTreeHook: `0x19dc38aeae620380430C200a6E990D5Af5480117`
+- checkpoint index observed: `2183749`
+- signer bitmap: `0x07` (all three registry validators)
+- compressed aggregate signature: present and 96 bytes
+- PausableISM remains paused, so Base -> XGR delivery remains fail-closed
+
+This proves the reverse checkpoint-source, validator eligibility, BLS gossip and
+3-of-3 aggregation path on Mainnet. It does not yet prove reverse Mailbox
+processing or Warp burn/unlock delivery; those remain gated behind the paused
+PausableISM and the reverse relayer rollout.
+
+---
+
 # Known gaps and reconciliation work
 
 1. `deployments/xgr-base-route.json` was reconciled on 2026-10-01 with the deployed routers and reverse V2 security stack.
