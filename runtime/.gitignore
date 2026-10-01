@@ -1,4 +1,5 @@
 .env.relayer
+.env.relayer.reverse
 *.key
 *.pem
 runtime-state/

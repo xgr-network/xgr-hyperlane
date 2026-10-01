@@ -65,32 +65,35 @@ For the first Base deployment:
 
 ## Native attestation RPC
 
-Latest completed attestation:
+Latest completed forward attestation:
 
 ```text
 xgr_getInterchainAttestation("base")
 ```
 
+Latest completed reverse attestation:
+
+```text
+xgr_getInterchainAttestation("base_to_xgr")
+```
+
 Archived checkpoint attestation:
 
 ```text
-xgr_getInterchainAttestationByCheckpoint("base", setId, index, root)
+xgr_getInterchainAttestationByCheckpoint(route, setId, index, root)
 ```
 
 The RPC is read-only. It cannot request or trigger a signature.
 
-A public object-store publisher is optional for redundancy; it is no longer a
-security or operational requirement because independent relayers can read
-completed attestations from any XGR 3.0 RPC endpoint.
-
 ## Relayer
 
-The production runtime no longer starts a Hyperlane validator.
+The production relayer runs **natively under Node.js**, not in Docker and not
+as a systemd service. The process is supervised by `runtime/manage-relayers.sh`
+using `nohup`, PID files, logs and persistent state under
+`runtime/runtime-state/`.
 
-`runtime/native-relayer` is route-generic. The existing forward deployment may
-continue using the legacy `XGR_*` origin variables. Reverse uses
-`runtime/.env.relayer.reverse.example` and the attestation route
-`base_to_xgr`.
+Forward uses `.env.relayer`; reverse uses `.env.relayer.reverse`.
+The two directions have separate processes, logs, PID files and state files.
 
 Forward metadata uses the EIP-2537 aggregate signature. Reverse metadata uses
 `aggregateSignatureCompressed`, matching RegistryV2 verifier format 1.
@@ -98,20 +101,41 @@ Forward metadata uses the EIP-2537 aggregate signature. Reverse metadata uses
 The relayer key only pays destination gas. Compromise of that key cannot produce
 a valid XGR BLS quorum proof.
 
-For bidirectional operation:
+Install/update dependencies once:
+
+```bash
+cd runtime/native-relayer
+npm install --no-audit --no-fund
+npm test
+node --check index.mjs
+node --check merkle.mjs
+```
+
+Prepare reverse configuration:
 
 ```bash
 cd runtime
 cp .env.relayer.reverse.example .env.relayer.reverse
 # set RELAYER_PRIVATE_KEY and ORIGIN_START_BLOCK before first start
-docker compose -f docker-compose.bidirectional.yml up -d --build
 ```
 
 A fresh reverse state does not replay the full Base Hyperlane history. It reads
 `MerkleTreeHook.tree()` at `ORIGIN_START_BLOCK - 1` and indexes only later
 leaves. Set `ORIGIN_START_BLOCK` to Base head + 1 immediately before the first
-start, and do not send the first Base -> XGR test message until the reverse
-container has logged `native_relayer_state_bootstrapped`.
+start, and do not send the first Base -> XGR test message until the reverse log
+contains `native_relayer_state_bootstrapped`.
+
+Native process management:
+
+```bash
+cd runtime
+./manage-relayers.sh status all
+./manage-relayers.sh start forward
+./manage-relayers.sh start reverse
+./manage-relayers.sh restart all
+./manage-relayers.sh logs forward
+./manage-relayers.sh logs reverse
+```
 
 The relayer reconstructs the 32-level Hyperlane Merkle proof and checks that its
 computed root exactly equals the XGR-validator-attested root before submitting
@@ -152,14 +176,14 @@ Do not expose the bridge to users until all of the following are evidenced:
 6. native ISM is deployed against that registry and canonical XGR origin
    context;
 7. a completed two-thirds native attestation is readable over XGR RPC;
-8. native relayer indexes XGR without Merkle history gaps;
+8. native relayer indexes the origin without Merkle history gaps;
 9. minimal XGR -> Base message delivery succeeds;
-10. invalid proof, stale setId, insufficient bitmap and modified message tests
-    all fail closed on Base;
-11. validator ADD, voluntary REMOVE and forced REMOVE are tested;
-12. executor reimbursement and `claim()` are tested;
-13. final deployment manifests contain the verified addresses;
-14. Warp routers are deployed only after their separate security gate;
+10. minimal Base -> XGR message delivery succeeds under controlled conditions;
+11. invalid proof, stale setId, insufficient bitmap and modified message tests
+    fail closed;
+12. validator ADD, voluntary REMOVE and forced REMOVE are tested;
+13. executor reimbursement and `claim()` are tested;
+14. final deployment manifests contain the verified addresses;
 15. public UI remains disabled until the complete route is intentionally opened.
 
 ## Secrets
