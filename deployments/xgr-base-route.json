@@ -6,14 +6,16 @@
     "mailbox": "0x5632409bc2f0e8bAc4AaF43654D4FFc7822C9c79",
     "inboundOrigin": 8453,
     "domainRoutingIsm": "0xAf03B407FED3c4857A24Be9ac8EC64b7d178AA51",
-    "aggregationIsm": "0x320e8501677532cc1f5c5bb7990b6db72c627b6c",
+    "aggregationIsm": "0x35c2B8403a65D3bd2b86294BF1f26E13A246c05e",
     "aggregationThreshold": 2,
     "aggregationModules": [
       "0x1175F84765CFeA514ea1fd75162CFE8a6C64d4CA",
-      "0x15Aad8569fe7e6E3E6eC6c6dE3f696bB1eEF7148"
+      "0x3b83687d77170D42feDDFe221629cc21e771E021"
     ],
     "pausableIsmPaused": true,
-    "baseValidatorThreshold": "3-of-5"
+    "reverseRegistryV2": "0x013F2F2f7dB897F941b19C4ab71C5395a48A0292",
+    "reverseNativeIsmV2": "0x3b83687d77170D42feDDFe221629cc21e771E021",
+    "routingUpdateTx": "0x6f94a1652effdc487bf36ea51c47401536b5a06be64fd6e224cbbb53f897850f"
   },
   "base": {
     "domainId": 8453,
@@ -21,12 +23,13 @@
     "validatorAnnounce": "0x182E8d7c5F1B06201b102123FC7dF0EaeB445a7B",
     "merkleTreeHook": "0x19dc38aeae620380430C200a6E990D5Af5480117",
     "interchainGasPaymaster": "0xc3F23848Ed2e04C0c6d41bd7804fa8f89F940B94",
-    "xgrOriginIsm": null,
-    "syntheticXgrRouter": null
+    "xgrOriginIsm": "0x3d2aDD3a7dAcb82C11338b6731B22d2aFeD4E1Cc",
+    "syntheticXgrRouter": "0x3b83687d77170d42feddfe221629cc21e771e021"
   },
   "warp": {
-    "xgrNativeRouter": null,
-    "baseSyntheticRouter": null,
-    "nativeCustodyEnabled": false
+    "xgrNativeRouter": "0x202C10bDeCf3B796EA4B4025C81952C4F2DD9f93",
+    "baseSyntheticRouter": "0x3b83687d77170d42feddfe221629cc21e771e021",
+    "nativeCustodyEnabled": false,
+    "forwardE2eTested": true
   }
 }
