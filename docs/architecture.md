@@ -99,9 +99,23 @@ reject unsupported custom-hook dispatch paths.
 
 ## Base -> XGR
 
-The existing Base-origin route on XGR is separate. It remains protected by the
-existing aggregation ISM including the deliberately paused PausableIsm until the
-inbound route is intentionally opened.
+Base-origin checkpoints are read independently by the XGR validator nodes from
+the canonical Base Mailbox / MerkleTreeHook after the configured confirmation
+delay. The explicit `base_to_xgr` route signs those external checkpoints with
+the XGR interchain validator subset and exposes completed attestations over the
+same read-only XGR RPC.
+
+On XGRChain the Base domain now routes to a 2-of-2 aggregation:
+
+1. PausableISM `0x1175F84765CFeA514ea1fd75162CFE8a6C64d4CA`;
+2. XGRNativeInterchainISMV2 `0x3b83687d77170D42feDDFe221629cc21e771E021`.
+
+The V2 ISM resolves historical validator sets from RegistryV2
+`0x013F2F2f7dB897F941b19C4ab71C5395a48A0292` and verifies compressed BLS
+aggregate signatures with native precompile `0x2040`.
+
+The PausableISM remains paused until the reverse relayer and a controlled
+Base -> XGR E2E test are ready, so the inbound route remains fail-closed.
 
 ## Warp route
 
