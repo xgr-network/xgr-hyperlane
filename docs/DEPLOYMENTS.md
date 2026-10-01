@@ -234,7 +234,7 @@ No DomainRoutingISM change has yet been made for this V2 path.
 | Module 0 | PausableISM `0x1175F84765CFeA514ea1fd75162CFE8a6C64d4CA` |
 | Module 1 | XGRNativeInterchainISMV2 `0x3b83687d77170D42feDDFe221629cc21e771E021` |
 
-The address was predicted deterministically by the StaticAggregationIsmFactory before deployment. Code was confirmed on-chain at the predicted address. This aggregation is intended to replace the legacy Base-origin aggregation in DomainRoutingISM after the routing update. Because the PausableISM remains paused, the path remains fail-closed until an intentional unpause.
+The address was predicted deterministically by the StaticAggregationIsmFactory before deployment. Code was confirmed on-chain at the predicted address. DomainRoutingISM domain 8453 was updated to this aggregation in transaction `0x6f94a1652effdc487bf36ea51c47401536b5a06be64fd6e224cbbb53f897850f` at block **11,070,767**, signed by owner `0xE3dA0303c8d48Dd8d4d6f9ba438cD5816b36BBD1`. Because the PausableISM remains paused, the path remains fail-closed until an intentional unpause.
 
 
 ---
@@ -332,13 +332,13 @@ Dynamic XRC-137 / XRC-729 artifacts are intentionally **not** listed as canonica
 
 # Known gaps and reconciliation work
 
-1. `deployments/xgr-base-route.json` still reflects an older prelaunch snapshot and contains `null` for routers that were deployed later.
-2. `deployments/xgrchain-mainnet.json` does not yet contain the Base destination native stack, Warp router addresses, or RegistryV2.
+1. `deployments/xgr-base-route.json` was reconciled on 2026-10-01 with the deployed routers and reverse V2 security stack.
+2. `deployments/xgrchain-mainnet.json` was reconciled on 2026-10-01 with RegistryV2, ISMV2, reverse aggregation and the domain-8453 routing update.
 3. Several early Hyperlane-core deployment transaction hashes were not preserved in the project chats.
 4. The Base synthetic router deployment transaction hash was not recovered from the project chat history.
 5. Safe deployment transaction hashes are incomplete in the project conversation history.
-6. XGRNativeInterchainISMV2 was deployed on 2026-10-01 and is staged; it is not yet wired into DomainRoutingISM.
-7. Reverse-path safety aggregation is deployed; record the upcoming DomainRoutingISM update transaction and exact module assignment here.
+6. XGRNativeInterchainISMV2 was deployed on 2026-10-01 and is wired through the reverse-path aggregation.
+7. DomainRoutingISM domain 8453 now points to the V2 reverse-path 2-of-2 aggregation; PausableISM remains paused, so Base -> XGR remains fail-closed.
 8. When route/runtime configuration changes, also update the machine-readable manifests in `deployments/`.
 
 ---
