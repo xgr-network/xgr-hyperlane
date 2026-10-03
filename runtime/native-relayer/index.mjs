@@ -16,6 +16,7 @@ import {
   buildProofFromNodes,
   snapshotNodes,
 } from "./merkle.mjs";
+import { wrapAggregationMetadata } from "./metadata.mjs";
 
 const env = (name, fallback = undefined) => {
   const value = process.env[name] ?? fallback;
@@ -93,6 +94,47 @@ if (RELAYER_SUBMIT_RAW !== "true" && RELAYER_SUBMIT_RAW !== "false") {
   throw new Error("RELAYER_SUBMIT must be true or false");
 }
 const RELAYER_SUBMIT = RELAYER_SUBMIT_RAW === "true";
+
+const DESTINATION_AGGREGATION_MODULE_COUNT = Number(
+  process.env.DESTINATION_AGGREGATION_MODULE_COUNT ?? "0",
+);
+const DESTINATION_AGGREGATION_INNER_INDEX = Number(
+  process.env.DESTINATION_AGGREGATION_INNER_INDEX ?? "0",
+);
+const DESTINATION_AGGREGATION_EMPTY_INDEXES = (
+  process.env.DESTINATION_AGGREGATION_EMPTY_INDEXES ?? ""
+)
+  .split(",")
+  .map((value) => value.trim())
+  .filter(Boolean)
+  .map(Number);
+
+if (
+  !Number.isSafeInteger(DESTINATION_AGGREGATION_MODULE_COUNT) ||
+  DESTINATION_AGGREGATION_MODULE_COUNT < 0
+) {
+  throw new Error(
+    "DESTINATION_AGGREGATION_MODULE_COUNT must be a non-negative safe integer",
+  );
+}
+if (DESTINATION_AGGREGATION_MODULE_COUNT > 0) {
+  if (
+    !Number.isSafeInteger(DESTINATION_AGGREGATION_INNER_INDEX) ||
+    DESTINATION_AGGREGATION_INNER_INDEX < 0 ||
+    DESTINATION_AGGREGATION_INNER_INDEX >= DESTINATION_AGGREGATION_MODULE_COUNT
+  ) {
+    throw new Error("DESTINATION_AGGREGATION_INNER_INDEX is invalid");
+  }
+  for (const index of DESTINATION_AGGREGATION_EMPTY_INDEXES) {
+    if (
+      !Number.isSafeInteger(index) ||
+      index < 0 ||
+      index >= DESTINATION_AGGREGATION_MODULE_COUNT
+    ) {
+      throw new Error("DESTINATION_AGGREGATION_EMPTY_INDEXES contains an invalid index");
+    }
+  }
+}
 
 for (const [name, value] of [
   ["ORIGIN_DOMAIN", ORIGIN_DOMAIN],
@@ -450,6 +492,18 @@ async function getAttestation() {
   return attestation;
 }
 
+function wrapDestinationMetadata(innerMetadata) {
+  if (DESTINATION_AGGREGATION_MODULE_COUNT === 0) {
+    return innerMetadata;
+  }
+  return wrapAggregationMetadata(
+    innerMetadata,
+    DESTINATION_AGGREGATION_MODULE_COUNT,
+    DESTINATION_AGGREGATION_INNER_INDEX,
+    DESTINATION_AGGREGATION_EMPTY_INDEXES,
+  );
+}
+
 function buildMetadata(state, id, attestation) {
   const messageIndex = state.indices[id];
   const checkpointIndex = Number(attestation.index);
@@ -469,7 +523,7 @@ function buildMetadata(state, id, attestation) {
     );
   }
 
-  return coder.encode(
+  const innerMetadata = coder.encode(
     ["uint32", "bytes32[32]", "uint32", "uint64", "bytes", "bytes"],
     [
       messageIndex,
@@ -480,6 +534,8 @@ function buildMetadata(state, id, attestation) {
       aggregateSignature(attestation),
     ],
   );
+
+  return wrapDestinationMetadata(innerMetadata);
 }
 
 async function relayAvailable(state) {
@@ -507,6 +563,11 @@ async function relayAvailable(state) {
     if (!metadata) continue;
 
     if (!RELAYER_SUBMIT) {
+      // eth_call the exact Mailbox.process path before declaring observe-only readiness.
+      // This catches destination ISM / aggregation metadata incompatibilities without
+      // changing destination state or spending gas.
+      await destinationMailbox.process.staticCall(metadata, message);
+
       const observationKey = `${id}:${attestation.index}:${attestation.root}`;
       if (!observedReady.has(observationKey)) {
         observedReady.add(observationKey);
@@ -519,6 +580,7 @@ async function relayAvailable(state) {
             setId: String(attestation.setId),
             signatureFormat: ATTESTATION_SIGNATURE_FORMAT,
             metadataBytes: getBytes(metadata).length,
+            staticValidated: true,
           }),
         );
       }
@@ -570,6 +632,12 @@ async function main() {
       attestationChainId: String(ATTESTATION_CHAIN_ID),
       signatureFormat: ATTESTATION_SIGNATURE_FORMAT,
       submitEnabled: RELAYER_SUBMIT,
+      aggregationModuleCount: DESTINATION_AGGREGATION_MODULE_COUNT,
+      aggregationInnerIndex:
+        DESTINATION_AGGREGATION_MODULE_COUNT > 0
+          ? DESTINATION_AGGREGATION_INNER_INDEX
+          : null,
+      aggregationEmptyIndexes: DESTINATION_AGGREGATION_EMPTY_INDEXES,
       relayer: wallet.address,
       nextBlock: state.nextBlock,
       snapshotCount: state.snapshotCount,
