@@ -117,7 +117,7 @@ Canonical 3-validator interchain subset, in registry order:
 | Address | `0x202C10bDeCf3B796EA4B4025C81952C4F2DD9f93` |
 | Owner | `0x6a6415Aa1c945Ee437336c136c2de9E8baB1F05E` |
 | Deployment TX | `0x54229bb14d6a46a8f73b40a69e9a1c47b597741fb26b79007ae57e9d87331827` |
-| Status | deployed; forward path tested |
+| Status | deployed; forward path tested; Base outbound enabled for controlled reverse test |
 
 ## Base synthetic XGR router
 
@@ -129,6 +129,14 @@ Canonical 3-validator interchain subset, in registry order:
 | Owner | `0x6a6415Aa1c945Ee437336c136c2de9E8baB1F05E` |
 | Deployment TX | unrecovered from project chats |
 | Status | deployed; forward path tested |
+
+Base outbound was enabled for the controlled Base -> XGR test on 2026-10-03.
+
+- Outbound enable TX: `0xdde77f3a5fbf567386ed47d2f263be844de2354fe57c61de1d368c83a0a07e45`
+- Block: **52,110,347**
+- Sender/owner: `0x6a6415Aa1c945Ee437336c136c2de9E8baB1F05E`
+- Result: `outboundEnabled() == true`
+- XGR inbound remains disabled and the XGR PausableISM remains paused, so delivery is still fail-closed.
 
 **Important cross-chain address collision:**  
 `0x202C10bDeCf3B796EA4B4025C81952C4F2DD9f93` is the **XGR native Warp router on XGRChain**, but the **BLS verifier on Base**. Always identify the chain together with the address.
