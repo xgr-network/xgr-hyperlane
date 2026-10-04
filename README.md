@@ -1,23 +1,33 @@
 # XGR Interchain / Hyperlane Integration
 
-This repository contains the public contracts, deployment manifests, native relayer runtime and operational documentation for XGR Interchain infrastructure using Hyperlane-compatible messaging.
+XGR Interchain is the mainnet cross-chain infrastructure of XGR Network.
 
-The first implemented asset route connects:
+This repository contains the public contracts, deployment manifests, native relayer runtime and operational documentation for XGR Interchain using Hyperlane-compatible messaging and XGR-native BLS validator security.
+
+The first production asset route connects:
 
 **XGRChain ↔ Base**
 
 with:
 
 - native XGR on XGRChain,
-- synthetic XGR / wXGR on Base,
+- wrapped XGR / wXGR on Base,
 - lock/mint semantics from XGRChain to Base,
 - burn/unlock semantics from Base to XGRChain.
 
-Both directions have been validated end-to-end on mainnet.
+Both directions are deployed and have been validated end-to-end on mainnet.
 
-The route is **not described as a permanently open public bridge** merely because both directions have passed end-to-end tests.
+The public bidirectional bridge is available at:
 
-Runtime submission, pause controls, router controls and user-facing availability are separate operational states.
+```text
+https://bridge.xgr.network
+```
+
+Official Base wXGR:
+
+```text
+0x3b83687d77170d42feddfe221629cc21e771e021
+```
 
 ---
 
@@ -25,30 +35,39 @@ Runtime submission, pause controls, router controls and user-facing availability
 
 | Component | Status |
 | --- | --- |
-| XGRChain mainnet | Live |
+| XGRChain | Mainnet |
 | XGRChain chain/domain | `1643` |
+| Base | Mainnet |
 | Base chain/domain | `8453` |
-| XGRChain Hyperlane Core | Deployed |
-| XGR native Interchain node support | Active in current XGRChain node baseline |
-| XGR → Base native security stack | Deployed |
-| Base → XGR native security stack | Deployed |
-| XGR native Warp router | Deployed |
-| Base synthetic XGR / wXGR router | Deployed |
+| XGRChain Hyperlane Core | Mainnet |
+| XGR native Interchain node support | Mainnet |
+| XGR → Base native security stack | Mainnet |
+| Base → XGR native security stack | Mainnet |
+| XGR native Warp router | Mainnet |
+| Base synthetic XGR / wXGR router | Mainnet |
 | XGR → Base E2E asset transfer | Mainnet validated |
 | Base → XGR E2E asset transfer | Mainnet validated |
-| User-facing public bridge | Not implied by E2E validation |
-| Reverse relayer submission | Currently disabled |
-| Reverse relayer process | Currently stopped |
+| Public bidirectional bridge | Mainnet |
+| Forward relayer submission | Mainnet enabled |
+| Reverse relayer submission | Mainnet enabled |
+| Forward relayer process | Mainnet running |
+| Reverse relayer process | Mainnet running |
 
 Current XGRChain public node baseline:
 
-    xgr-node v3.1.1
+```text
+xgr-node v3.1.1
+```
 
 Release commit:
 
-    1a4844b311fb856cb8c2303a40fa8aa69b560544
+```text
+1a4844b311fb856cb8c2303a40fa8aa69b560544
+```
 
 The `main` branch is the canonical public source for the current XGR Interchain implementation, deployment manifests, runtime examples and operational documentation.
+
+Dynamic runtime state can change independently from static repository documentation and should be verified live when current route availability matters.
 
 ---
 
@@ -77,33 +96,41 @@ Hyperlane-compatible infrastructure provides:
 
 The native Interchain worker is not part of the weighted-IBFT consensus-critical path.
 
-A destination outage or relayer outage must not prevent:
+Therefore:
+
+```text
+XGRChain consensus
+≠
+XGR Interchain validator quorum
+```
+
+A destination outage, remote RPC outage or relayer outage must not prevent:
 
 - XGR block production,
 - XGR block validation,
 - IBFT finalization,
-- chain synchronization.
+- normal chain synchronization.
 
 ---
 
 ## Security model
 
-The XGR-origin route does not use the relayer as a trust anchor.
+XGR Interchain does not use the relayer as the trust anchor for message validity.
 
 For an XGR-origin message:
 
-1. the message is dispatched through the XGR Hyperlane Mailbox,
+1. the message is dispatched through the XGR Hyperlane-compatible Mailbox,
 2. the canonical MerkleTreeHook inserts the message,
 3. participating XGR validator nodes observe the canonical root,
 4. the destination-specific XGR Interchain validator subset signs the checkpoint,
 5. XGR nodes aggregate the required BLS quorum,
 6. completed attestations become available through read-only XGR RPC,
-7. an untrusted relayer reconstructs the Merkle proof,
+7. the native relayer reconstructs the Merkle proof,
 8. the relayer submits the message, proof and attestation,
-9. the destination native XGR ISM independently verifies the proof and BLS quorum,
+9. the destination XGR-native ISM independently verifies the proof and BLS quorum,
 10. the destination Mailbox delivers the message only after successful verification.
 
-The relayer can delay or withhold delivery.
+The relayer can affect delivery availability.
 
 It cannot create a valid XGR BLS quorum attestation by itself.
 
@@ -115,21 +142,21 @@ These are related but separate roles.
 
 An XGR Interchain validator must satisfy destination-specific Interchain membership rules.
 
-The native security model also checks its relationship to XGR staking and BLS identity.
+The native security model connects:
 
-Conceptually:
-
-    XGR consensus validator
-            │
-            ├── active staking identity
-            └── BLS identity
-                    │
-                    ▼
-        destination-specific
-        Interchain registry
-                    │
-                    ▼
-          Interchain signer
+```text
+XGR validator identity
+        │
+        ├── active staking identity
+        └── BLS identity
+                │
+                ▼
+destination-specific
+Interchain registry
+                │
+                ▼
+Interchain signer
+```
 
 Membership in an Interchain validator set does not create additional XGRChain IBFT voting authority.
 
@@ -137,27 +164,56 @@ Likewise, normal XGRChain validator participation does not automatically make a 
 
 ### Destination-scoped membership
 
-Interchain membership is scoped to the **destination registry**, while checkpoint attestations are scoped to individual **routes**.
+Interchain membership is scoped to the destination registry.
+
+Checkpoint attestations remain route-specific.
 
 For example:
 
-    --chain base
+```text
+base_to_xgr
+polygon_to_xgr
+arbitrum_to_xgr
+```
 
-manages membership in the Base destination registry used by XGR-origin routes whose destination is Base.
+can share:
 
-And:
+```text
+destination = XGRChain
+```
 
-    --chain xgr
+and therefore use the same XGR destination registry membership while retaining independent:
 
-manages membership in the XGRChain destination RegistryV2. The same XGR Interchain validator membership can then secure multiple configured routes whose destination is XGRChain, for example:
+- source chains,
+- Mailboxes,
+- MerkleTreeHooks,
+- confirmation policies,
+- checkpoint streams,
+- attestations.
 
-    base_to_xgr
-    polygon_to_xgr
-    arbitrum_to_xgr
+V1 and V2 identify contract generations.
 
-Each route keeps its own source chain, Mailbox, MerkleTreeHook, confirmation policy and attestation stream. Multiple routes may therefore share one destination validator registry without sharing checkpoint state.
+They do not mean forward versus reverse security models.
 
-V1 and V2 name contract generations; they do **not** mean forward versus reverse security models. Both deployed generations use XGR-native BLS validator security.
+Both deployed generations use XGR-native BLS validator security.
+
+---
+
+## Interchain quorum
+
+The native Interchain validator set uses an unweighted two-thirds quorum.
+
+This is intentionally separate from XGRChain's stake- and uptime-weighted IBFT voting power.
+
+Therefore:
+
+```text
+XGRChain consensus voting power
+≠
+Interchain attestation voting weight
+```
+
+The two systems use separate quorum semantics for separate security functions.
 
 ---
 
@@ -167,52 +223,59 @@ V1 and V2 name contract generations; they do **not** mean forward versus reverse
 
 The forward asset path is:
 
-    native XGR
-        │
-        │ lock
-        ▼
-    XGR native Warp router
-        │
-        ▼
-    XGR Hyperlane Mailbox
-        │
-        ▼
-    XGR MerkleTreeHook
-        │
-        ▼
-    native XGR BLS attestation
-        │
-        ▼
-    native relayer
-        │
-        ▼
-    Base Mailbox
-        │
-        ▼
-    XGRNativeInterchainISM
-        │
-        ▼
-    Base synthetic router
-        │
-        │ mint
-        ▼
-    synthetic XGR / wXGR
+```text
+native XGR
+    │
+    │ lock
+    ▼
+XGR native Warp router
+    │
+    ▼
+XGR Hyperlane Mailbox
+    │
+    ▼
+XGR MerkleTreeHook
+    │
+    ▼
+XGR native BLS attestation
+    │
+    ▼
+native relayer
+    │
+    ▼
+Base Mailbox
+    │
+    ▼
+XGRNativeInterchainISM
+    │
+    ▼
+Base synthetic router
+    │
+    │ mint
+    ▼
+wXGR
+```
 
-A successful mainnet test transferred:
+A successful controlled mainnet validation transferred:
 
-    0.1 XGR
+```text
+0.1 XGR
+```
 
-from native XGR on XGRChain to synthetic XGR / wXGR on Base.
+from native XGR on XGRChain to wXGR on Base.
 
-The observed forward test confirmed:
+The observed forward validation confirmed:
 
 - native XGR locking,
-- Hyperlane message dispatch,
+- Hyperlane-compatible message dispatch,
 - native XGR attestation,
+- BLS quorum,
 - Merkle proof construction,
 - Base Mailbox processing,
 - destination ISM verification,
-- synthetic asset minting.
+- wXGR minting.
+
+The forward route is deployed on mainnet and publicly available through the XGR Bridge.
 
 ---
 
@@ -229,7 +292,7 @@ The destination registry is the canonical Interchain membership state for the fo
 The destination ISM verifies:
 
 - registry membership,
-- current validator set,
+- validator set,
 - signer bitmap,
 - BLS aggregate signature,
 - quorum,
@@ -243,52 +306,82 @@ The destination ISM verifies:
 
 The reverse asset path is:
 
-    synthetic XGR / wXGR
-        │
-        │ burn
-        ▼
-    Base synthetic router
-        │
-        ▼
-    Base Mailbox
-        │
-        ▼
-    Base MerkleTreeHook
-        │
-        ▼
-    XGR validator nodes observe
-    confirmed Base checkpoint
-        │
-        ▼
-    base_to_xgr BLS attestation
-        │
-        ▼
-    reverse native relayer
-        │
-        ▼
-    XGR Hyperlane Mailbox
-        │
-        ▼
-    DomainRoutingISM
-        │
-        ▼
-    2-of-2 AggregationISM
-        │
-        ├── PausableISM
-        │
-        └── XGRNativeInterchainISMV2
-                  │
-                  ▼
-        native BLS precompile 0x2040
-                  │
-                  ▼
-        XGR native Warp router
-                  │
-                  │ unlock
-                  ▼
-              native XGR
+```text
+wXGR
+    │
+    │ burn
+    ▼
+Base synthetic router
+    │
+    ▼
+Base Mailbox
+    │
+    ▼
+Base MerkleTreeHook
+    │
+    ▼
+confirmed Base checkpoint
+    │
+    ▼
+XGR Interchain validators
+    │
+    ▼
+base_to_xgr BLS attestation
+    │
+    ▼
+reverse native relayer
+    │
+    ▼
+XGR Hyperlane Mailbox
+    │
+    ▼
+DomainRoutingISM
+    │
+    ▼
+2-of-2 AggregationISM
+    │
+    ├── PausableISM
+    │
+    └── XGRNativeInterchainISMV2
+              │
+              ▼
+    native BLS precompile 0x2040
+              │
+              ▼
+XGR native Warp router
+    │
+    │ unlock
+    ▼
+native XGR
+```
 
-This direction has also been validated end-to-end on mainnet under controlled conditions.
+This direction has also been validated end-to-end on mainnet.
+
+A successful controlled reverse validation transferred:
+
+```text
+0.01 wXGR
+```
+
+from Base back to native XGR on XGRChain.
+
+The reverse route is deployed on mainnet and publicly enabled through the XGR Bridge.
+
+---
+
+## Reverse source confirmation
+
+The current Base source configuration uses a confirmation delay of:
+
+```text
+12 Base blocks
+```
+
+before the corresponding external checkpoint becomes eligible for XGR Interchain attestation.
+
+This is a route-level Interchain policy.
+
+It is separate from XGRChain IBFT finality.
 
 ---
 
@@ -296,23 +389,41 @@ This direction has also been validated end-to-end on mainnet under controlled co
 
 ### RegistryV2
 
-    0x013F2F2f7dB897F941b19C4ab71C5395a48A0292
+```text
+0x013F2F2f7dB897F941b19C4ab71C5395a48A0292
+```
 
 `XGRInterchainValidatorRegistryV2` preserves historical validator sets.
 
 This allows a checkpoint signed under set N to remain verifiable after a later membership transition.
 
+Current validated reverse configuration includes:
+
+```text
+setId = 1
+validators = 3
+quorum = 2
+```
+
+Current live membership must be read from the deployed registry when operationally relevant.
+
 ### XGRNativeInterchainISMV2
 
-    0x3b83687d77170D42feDDFe221629cc21e771E021
+```text
+0x3b83687d77170D42feDDFe221629cc21e771E021
+```
 
 The reverse V2 ISM verifies compressed BLS aggregate signatures through the native XGRChain precompile:
 
-    0x0000000000000000000000000000000000002040
+```text
+0x0000000000000000000000000000000000002040
+```
 
 ### Reverse aggregation
 
-    0x35c2B8403a65D3bd2b86294BF1f26E13A246c05e
+```text
+0x35c2B8403a65D3bd2b86294BF1f26E13A246c05e
+```
 
 The reverse path uses a 2-of-2 aggregation containing:
 
@@ -321,9 +432,13 @@ The reverse path uses a 2-of-2 aggregation containing:
 
 PausableISM:
 
-    0x1175F84765CFeA514ea1fd75162CFE8a6C64d4CA
+```text
+0x1175F84765CFeA514ea1fd75162CFE8a6C64d4CA
+```
 
-This provides an explicit operational safety gate in addition to native BLS verification.
+Both modules must accept the message.
+
+The PausableISM provides an explicit operational safety gate in addition to native BLS verification.
 
 ---
 
@@ -338,6 +453,7 @@ This provides an explicit operational safety gate in addition to native BLS veri
 | Address | `0x202C10bDeCf3B796EA4B4025C81952C4F2DD9f93` |
 | Asset | Native XGR |
 | Function | Lock / unlock |
+| Status | Mainnet |
 
 ## Base synthetic router
 
@@ -346,8 +462,19 @@ This provides an explicit operational safety gate in addition to native BLS veri
 | Network | Base |
 | Chain/domain | `8453` |
 | Address | `0x3b83687d77170d42feddfe221629cc21e771e021` |
-| Asset | Synthetic XGR / wXGR |
+| Asset | wXGR |
 | Function | Mint / burn |
+| Status | Mainnet |
+
+The Base synthetic router is also the official Base wXGR token contract.
+
+Nominal bridge representation:
+
+```text
+1 XGR ↔ 1 wXGR
+```
+
+before applicable transaction and routing fees.
 
 ---
 
@@ -357,7 +484,9 @@ Two address collisions exist across the deployment.
 
 The address:
 
-    0x202C10bDeCf3B796EA4B4025C81952C4F2DD9f93
+```text
+0x202C10bDeCf3B796EA4B4025C81952C4F2DD9f93
+```
 
 means:
 
@@ -366,16 +495,24 @@ means:
 
 Likewise:
 
-    0x3b83687d77170D42feDDFe221629cc21e771E021
+```text
+0x3b83687d77170d42feDDFe221629cc21e771e021
+```
 
 means:
 
 - **XGRChain:** `XGRNativeInterchainISMV2`
-- **Base:** synthetic XGR / wXGR Warp router
+- **Base:** official wXGR contract / synthetic XGR router
 
 Always identify the chain together with the address.
 
-An address alone is not sufficient identification in an Interchain deployment.
+The correct identity tuple is:
+
+```text
+chain + address
+```
+
+An address alone is insufficient.
 
 ---
 
@@ -391,7 +528,7 @@ An address alone is not sufficient identification in an Interchain deployment.
 | DomainRoutingISM | `0xAf03B407FED3c4857A24Be9ac8EC64b7d178AA51` |
 | PausableISM | `0x1175F84765CFeA514ea1fd75162CFE8a6C64d4CA` |
 
-`ValidatorAnnounce` remains part of the deployed Hyperlane infrastructure and history but is not the trust anchor for XGR-origin native BLS security.
+`ValidatorAnnounce` remains part of the deployed Hyperlane-compatible infrastructure and deployment history but is not the trust anchor for XGR-native BLS security.
 
 ---
 
@@ -414,20 +551,26 @@ XGRChain nodes expose completed native Interchain attestations through read-only
 
 Latest completed forward attestation:
 
-    xgr_getInterchainAttestation("base")
+```text
+xgr_getInterchainAttestation("base")
+```
 
 Latest completed reverse attestation:
 
-    xgr_getInterchainAttestation("base_to_xgr")
+```text
+xgr_getInterchainAttestation("base_to_xgr")
+```
 
 Checkpoint-specific lookup:
 
-    xgr_getInterchainAttestationByCheckpoint(
-        route,
-        setId,
-        index,
-        root
-    )
+```text
+xgr_getInterchainAttestationByCheckpoint(
+    route,
+    setId,
+    index,
+    root
+)
+```
 
 These methods are read-only.
 
@@ -441,9 +584,11 @@ Attestations appear only after the native Interchain validator path has independ
 
 The current XGR native relayer implementation lives under:
 
-    runtime/native-relayer/
+```text
+runtime/native-relayer/
+```
 
-It runs under Node.js and is intentionally untrusted.
+It runs under Node.js and is intentionally untrusted for message validity.
 
 Its responsibilities include:
 
@@ -457,7 +602,7 @@ Its responsibilities include:
 
 Its signing key is a destination transaction gas payer.
 
-The relayer key is **not** an Interchain validator key and cannot manufacture a valid BLS quorum proof.
+The relayer key is not an Interchain validator key and cannot manufacture a valid BLS quorum proof.
 
 ---
 
@@ -467,60 +612,111 @@ The runtime maintains independent forward and reverse relayer processes.
 
 Forward:
 
-    XGRChain → Base
+```text
+XGRChain → Base
+```
 
 Reverse:
 
-    Base → XGRChain
+```text
+Base → XGRChain
+```
 
 Each direction has independent:
 
-- configuration,
+- environment configuration,
 - logs,
 - PID state,
-- indexed relayer state,
+- persisted indexing state,
 - submission control.
 
 Runtime management is handled by:
 
-    runtime/manage-relayers.sh
+```text
+runtime/manage-relayers.sh
+```
 
 Example operations:
 
-    ./manage-relayers.sh status all
-    ./manage-relayers.sh start forward
-    ./manage-relayers.sh start reverse
-    ./manage-relayers.sh stop reverse
-    ./manage-relayers.sh logs forward
-    ./manage-relayers.sh logs reverse
+```text
+./manage-relayers.sh status all
+./manage-relayers.sh start forward
+./manage-relayers.sh start reverse
+./manage-relayers.sh restart forward
+./manage-relayers.sh restart reverse
+./manage-relayers.sh stop forward
+./manage-relayers.sh stop reverse
+./manage-relayers.sh logs forward
+./manage-relayers.sh logs reverse
+```
 
 ---
 
-## Current reverse runtime state
+## Current mainnet relayer state
 
-At the current documentation baseline, reverse automatic submission has intentionally been disabled after the controlled mainnet validation.
+Both production transfer directions are enabled.
 
-Current configuration:
+Forward:
 
-    RELAYER_SUBMIT=false
+```text
+route: XGRChain → Base
+RELAYER_SUBMIT=true
+process: RUNNING
+status: Mainnet
+```
 
-Current process state:
+Reverse:
 
-    reverse: STOPPED
+```text
+route: Base → XGRChain
+RELAYER_SUBMIT=true
+process: RUNNING
+status: Mainnet
+```
 
-This is an **operational state**, not a limitation of the protocol implementation.
+The reverse relayer currently uses:
 
-It demonstrates why:
+```text
+ORIGIN_RPC_URL=https://base-rpc.publicnode.com
+```
 
-    bidirectional E2E validated
+The forward relayer uses the corresponding production Base RPC endpoint for destination submission.
 
-must not be interpreted as:
+These are runtime dependencies and may be changed without changing the deployed Interchain protocol.
 
-    both relayers permanently running
-    or
-    public bridge continuously open
+Current relayer process state must still be monitored live because an off-chain process can restart, stop or lose connectivity independently from the deployed contracts.
 
-Operational state can change independently from deployed contracts and protocol capability.
+---
+
+# Public bridge
+
+The production user-facing XGR Bridge is available at:
+
+```text
+https://bridge.xgr.network
+```
+
+It supports:
+
+```text
+XGR → wXGR
+```
+
+and:
+
+```text
+wXGR → XGR
+```
+
+for the current XGRChain ↔ Base route.
+
+The user signs the source transaction with the user's own wallet.
+
+XGR.Network infrastructure does not require possession of the user's wallet private key.
+
+The public interface intentionally presents simplified transfer terminology.
+
+Deep protocol and operator details remain in the technical documentation.
 
 ---
 
@@ -551,8 +747,13 @@ The following must remain synchronized whenever production state changes:
 - architecture documentation,
 - operations documentation.
 
-Machine-readable manifests under `deployments/` are the repository inventory, but dynamic route availability must still be verified from live contract and runtime state. A stale manifest must never override verified on-chain state.
+Machine-readable manifests under `deployments/` are the repository inventory.
 
+Dynamic operational state must still be verified from live contract and runtime state.
+
+A stale manifest or README must never override verified on-chain or runtime state.
+
+---
 
 # Security boundaries
 
@@ -575,7 +776,7 @@ An Interchain validator:
 
 - participates in destination-specific checkpoint attestation,
 - uses its BLS identity,
-- must satisfy the native registry/staking rules.
+- must satisfy the native registry and identity rules.
 
 It does not automatically gain additional IBFT consensus authority.
 
@@ -586,10 +787,10 @@ It does not automatically gain additional IBFT consensus authority.
 An XGRChain consensus validator:
 
 - participates in IBFT,
-- produces/finalizes XGRChain blocks,
+- produces and finalizes XGRChain blocks,
 - has stake- and uptime-weighted consensus power.
 
-It is not automatically an Interchain signer for every route.
+It is not automatically an Interchain signer for every destination.
 
 ---
 
@@ -600,8 +801,8 @@ Router or security-module administration is a separate permission domain.
 Contract ownership does not grant:
 
 - XGRChain consensus authority,
-- BLS quorum authority,
-- validator keys.
+- Interchain BLS quorum authority,
+- user-wallet authority.
 
 Operational controls should remain separated wherever practical.
 
@@ -624,13 +825,13 @@ Examples include:
 - disabled router direction,
 - disabled relayer submission.
 
-The system should fail closed rather than bypass verification.
+The system must fail closed rather than bypass verification.
 
 ---
 
 # User-facing availability
 
-A user-facing bridge must derive current availability from verified operational state.
+The public bridge derives route availability from current operational state.
 
 It must not assume that a deployed router is usable merely because code exists at its address.
 
@@ -640,27 +841,38 @@ Relevant runtime state can include:
 - destination router enabled state,
 - security-module state,
 - relayer submission state,
+- relayer process state,
 - validator quorum availability,
 - route configuration,
-- destination chain health.
+- source and destination RPC health.
 
-The repository therefore distinguishes:
+The repository distinguishes:
 
-    deployed
-
-from:
-
-    E2E validated
+```text
+deployed
+```
 
 from:
 
-    operationally enabled
+```text
+E2E validated
+```
 
 from:
 
-    publicly available
+```text
+operationally enabled
+```
 
-These are not synonymous.
+from:
+
+```text
+publicly available
+```
+
+The current XGRChain ↔ Base route has reached all four states.
+
+Dynamic operational availability nevertheless remains subject to current live state.
 
 ---
 
@@ -685,22 +897,55 @@ The native relayer contains tests for:
 
 Before changing native security or relayer behavior, run the corresponding contract and runtime test suites.
 
+Mainnet end-to-end validation exists for:
+
+```text
+XGRChain → Base
+```
+
+and:
+
+```text
+Base → XGRChain
+```
+
 ---
 
 # Documentation
+
+Implementation documentation:
 
 - [Architecture](docs/architecture.md)
 - [Operations and rollout](docs/operations.md)
 - [Deployment inventory](docs/DEPLOYMENTS.md)
 - [Security policy](SECURITY.md)
 
+Public XGR Interchain specifications:
+
+```text
+https://github.com/xgr-network/XGR/tree/main/docs/interchain
+```
+
+Public Interchain specification files:
+
+```text
+XGR_INTERCHAIN_Overview.md
+XGR_INTERCHAIN_Security_Model.md
+XGR_INTERCHAIN_Asset_Bridge.md
+XGR_INTERCHAIN_Deployment_Reference.md
+```
+
 XGRChain protocol documentation:
 
+```text
 https://github.com/xgr-network/XGR/tree/main/docs/chain
+```
 
 XGRChain node:
 
+```text
 https://github.com/xgr-network/xgr-node
+```
 
 ---
 
@@ -710,21 +955,22 @@ Never commit:
 
 - consensus validator private keys,
 - Interchain validator private keys,
-- relayer/deployer private keys,
+- relayer private keys,
+- deployer private keys,
 - seed phrases,
 - wallet exports,
-- SSH keys,
+- SSH private keys,
 - cloud credentials,
-- populated `.env` files,
+- populated production secret files,
 - production API credentials.
 
-Example and reference environment files must contain only non-secret values and placeholders.
+Example and reference environment files must contain only non-secret values and explicit placeholders.
 
 ---
 
 # Update rule
 
-After every production deployment, configuration change or E2E route test, update the public inventory with:
+After every production deployment, configuration change or E2E route test, update the public inventory where applicable with:
 
 - network / chain ID,
 - component,
@@ -733,10 +979,12 @@ After every production deployment, configuration change or E2E route test, updat
 - deployment block,
 - source branch / commit,
 - owner or administration relationship,
-- active/staged/paused state,
+- active or superseded state,
 - relevant configuration transaction,
 - route-direction state,
 - E2E transaction/message evidence.
+
+Dynamic process status must not be documented as if it were an immutable protocol property.
 
 Do not delete superseded deployments.
 
@@ -747,9 +995,11 @@ Mark them clearly as historical or superseded.
 # Official XGR resources
 
 - Website: https://xgr.network
+- Public Bridge: https://bridge.xgr.network
 - Documentation: https://xgr.network/docs/
 - Explorer: https://explorer.xgr.network
 - XGR specifications: https://github.com/xgr-network/XGR
+- XGR Interchain specifications: https://github.com/xgr-network/XGR/tree/main/docs/interchain
 - XGRChain node: https://github.com/xgr-network/xgr-node
 - GitHub organization: https://github.com/xgr-network
 
