@@ -52,10 +52,20 @@
       "pausableIsmPaused": false,
       "nativeRouterInboundEnabled": true
     },
+    "currentOperationalState": {
+      "observedDate": "2026-10-04",
+      "pausableIsmPaused": false,
+      "nativeRouterInboundEnabled": true,
+      "reverseRoutePublicEnabled": true
+    },
     "reverseRelayer": {
-      "observedDate": "2026-10-03",
-      "submitEnabled": false,
-      "processStatus": "stopped"
+      "observedDate": "2026-10-04",
+      "submitEnabled": true,
+      "processStatus": "running",
+      "attestationRoute": "base_to_xgr",
+      "signatureFormat": "compressed",
+      "originRpc": "https://base-rpc.publicnode.com",
+      "state": "mainnet_public_enabled"
     }
   }
 }
