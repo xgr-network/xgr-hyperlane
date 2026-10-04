@@ -48,11 +48,7 @@ Release commit:
 
     1a4844b311fb856cb8c2303a40fa8aa69b560544
 
-The current native Interchain implementation has been developed on:
-
-    feature/native-interchain-registry-v1
-
-The public `main` branch and its deployment manifests must be kept synchronized with the verified production implementation before they are treated as the sole authoritative deployment inventory.
+The `main` branch is the canonical public source for the current XGR Interchain implementation, deployment manifests, runtime examples and operational documentation.
 
 ---
 
@@ -138,6 +134,30 @@ Conceptually:
 Membership in an Interchain validator set does not create additional XGRChain IBFT voting authority.
 
 Likewise, normal XGRChain validator participation does not automatically make a validator an Interchain signer for every destination.
+
+### Destination-scoped membership
+
+Interchain membership is scoped to the **destination registry**, while checkpoint attestations are scoped to individual **routes**.
+
+For example:
+
+    --chain base
+
+manages membership in the Base destination registry used by XGR-origin routes whose destination is Base.
+
+And:
+
+    --chain xgr
+
+manages membership in the XGRChain destination RegistryV2. The same XGR Interchain validator membership can then secure multiple configured routes whose destination is XGRChain, for example:
+
+    base_to_xgr
+    polygon_to_xgr
+    arbitrum_to_xgr
+
+Each route keeps its own source chain, Mailbox, MerkleTreeHook, confirmation policy and attestation stream. Multiple routes may therefore share one destination validator registry without sharing checkpoint state.
+
+V1 and V2 name contract generations; they do **not** mean forward versus reverse security models. Both deployed generations use XGR-native BLS validator security.
 
 ---
 
@@ -518,32 +538,21 @@ Operational state can change independently from deployed contracts and protocol 
 
 ---
 
-# Branch and deployment-state rule
+# Source-of-truth rule
 
-The public repository currently contains two relevant development states:
+The `main` branch is the canonical public repository state.
 
-    main
+The following must remain synchronized whenever production state changes:
 
-and:
-
-    feature/native-interchain-registry-v1
-
-The native Registry/ISM/relayer implementation and more recent deployment inventory have been developed on the feature branch.
-
-Before `main` is treated as the canonical source for the complete deployed route, the following must agree:
-
-- source code,
+- contract source,
 - deployment manifests,
 - runtime examples,
 - README,
 - architecture documentation,
 - operations documentation.
 
-A stale `main` manifest must not override verified on-chain deployment state.
+Machine-readable manifests under `deployments/` are the repository inventory, but dynamic route availability must still be verified from live contract and runtime state. A stale manifest must never override verified on-chain state.
 
-Likewise, an undocumented runtime state must not silently be presented as a permanent protocol state.
-
----
 
 # Security boundaries
 

@@ -1,4 +1,5 @@
 {
+  "schemaVersion": 1,
   "network": "xgrchain",
   "chainId": 1643,
   "domainId": 1643,
@@ -8,6 +9,10 @@
     "name": "XGR",
     "symbol": "XGR",
     "decimals": 18
+  },
+  "currentNodeBaseline": {
+    "version": "v3.1.1",
+    "commit": "1a4844b311fb856cb8c2303a40fa8aa69b560544"
   },
   "hyperlaneCoreVersion": "12.1.0",
   "contracts": {
@@ -22,18 +27,35 @@
     "protocolFee": "0xf5f7A6D1Bd721D56F016b77e4Fc59C24bE5EA75f",
     "validatorAnnounce": "0x1814Be3E608883cA510707d3dc6f31792FD5CAaF",
     "pausableIsm": "0x1175F84765CFeA514ea1fd75162CFE8a6C64d4CA",
-    "baseOriginMerkleRootMultisigIsm": "0x15Aad8569fe7e6E3E6eC6c6dE3f696bB1eEF7148",
-    "baseOriginAggregationIsm": "0x320e8501677532cc1f5c5bb7990b6db72c627b6c"
+    "baseOriginMerkleRootMultisigIsmLegacy": "0x15Aad8569fe7e6E3E6eC6c6dE3f696bB1eEF7148",
+    "baseOriginAggregationIsmLegacy": "0x320e8501677532cc1f5c5bb7990b6db72c627b6c",
+    "reverseValidatorRegistryV2": "0x013F2F2f7dB897F941b19C4ab71C5395a48A0292",
+    "reverseNativeInterchainIsmV2": "0x3b83687d77170D42feDDFe221629cc21e771E021",
+    "baseOriginAggregationIsmV2": "0x35c2B8403a65D3bd2b86294BF1f26E13A246c05e",
+    "xgrNativeWarpRouter": "0x202C10bDeCf3B796EA4B4025C81952C4F2DD9f93"
   },
   "transactions": {
     "pausableIsmDeploy": "0x12799252fa4b11f34e71936287a5dea752c22f05cdb51af57427bd293878a371",
     "pausePausableIsm": "0xc22e1e45ee6dbd990d9e00a6dd82cf3a46e79e63b08d74733d2796fee31364da",
-    "baseOriginAggregationDeploy": "0xd1f2d50892be7b7fa8ae545654245159ff7d4a2bdf47697358af4aa4c8332313",
-    "baseRoutingUpdate": "0xede49f09799404f7050cb62ebe0bd08dec52506c1a48dd948428f5419d8b46cc"
+    "baseOriginAggregationDeployLegacy": "0xd1f2d50892be7b7fa8ae545654245159ff7d4a2bdf47697358af4aa4c8332313",
+    "baseRoutingUpdateLegacy": "0xede49f09799404f7050cb62ebe0bd08dec52506c1a48dd948428f5419d8b46cc",
+    "reverseRegistryV2Deploy": "0x0cf70e63929a91ce3940bc1379dcbd2960732e69750152923480b6314f982873",
+    "reverseNativeInterchainIsmV2Deploy": "0x6dbadb839dd1765f86455965a5fa237b73e9221ce77d332c5b60dca88f7c0708",
+    "reverseAggregationIsmV2Deploy": "0xdc160be658e85ca4f1c34ee49b1e4e6ad3722f93f886f796f454af70c45e7e67",
+    "baseRoutingUpdateV2": "0x6f94a1652effdc487bf36ea51c47401536b5a06be64fd6e224cbbb53f897850f",
+    "xgrNativeWarpRouterDeploy": "0x54229bb14d6a46a8f73b40a69e9a1c47b597741fb26b79007ae57e9d87331827"
   },
-  "state": {
-    "routeOpen": false,
-    "pausableIsmPaused": true,
-    "nativeWarpCustodyEnabled": false
+  "dynamicState": {
+    "queryLiveBeforeUse": true,
+    "lastConfirmedControlledReverseTest": {
+      "date": "2026-10-03",
+      "pausableIsmPaused": false,
+      "nativeRouterInboundEnabled": true
+    },
+    "reverseRelayer": {
+      "observedDate": "2026-10-03",
+      "submitEnabled": false,
+      "processStatus": "stopped"
+    }
   }
 }

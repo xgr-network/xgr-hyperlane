@@ -134,6 +134,24 @@ Interchain validator membership does not grant additional IBFT authority.
 
 Likewise, being an XGRChain consensus validator does not automatically make the validator an Interchain signer for every destination.
 
+### Destination membership versus route scope
+
+Membership is destination-scoped.
+
+A validator activated for destination `base` joins the Base-side XGR Interchain registry. A validator activated for destination `xgr` joins the XGRChain-side RegistryV2.
+
+Checkpoint routes are separate from membership. Multiple independently configured source routes may point to the same destination and therefore share the same destination validator set.
+
+For example:
+
+    base_to_xgr      ┐
+    polygon_to_xgr   ├── destination = xgr
+    arbitrum_to_xgr  ┘
+
+All three routes can use the same XGR destination registry membership while retaining independent source-chain checkpoint contexts, confirmation policies and attestations.
+
+This means a validator joins the XGR destination registry once and can participate in every configured route whose destination is `xgr`, subject to normal route configuration and eligibility checks.
+
 ---
 
 ## 6. Interchain quorum
@@ -795,25 +813,14 @@ Repository:
 
 ---
 
-## 31. Branch-state caveat
+## 31. Repository source of truth
 
-The repository currently contains implementation and deployment information that has evolved on:
+The `main` branch is the canonical public representation of the XGR Interchain implementation.
 
-    feature/native-interchain-registry-v1
+Source code, deployment manifests, runtime examples and documentation must be updated together when production state changes.
 
-while the `main` branch still contains older prelaunch documentation and manifests.
+Dynamic operational state such as pause flags, router gates and relayer process state must still be queried live when making availability decisions.
 
-Before `main` is considered the complete canonical public representation of the deployed route, the following must be synchronized:
-
-- contract source,
-- deployment manifests,
-- runtime examples,
-- architecture documentation,
-- operations documentation.
-
-Verified on-chain deployment state and current runtime state must not be overwritten conceptually by stale repository text.
-
----
 
 # Security principles
 

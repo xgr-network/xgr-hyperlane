@@ -1,7 +1,5 @@
-.env.validator
 .env.relayer
-.env.validator.beta
-.env.relayer.beta
+.env.relayer.reverse
 *.key
 *.pem
 runtime-state/
