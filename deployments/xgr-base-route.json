@@ -1,12 +1,16 @@
 {
   "schemaVersion": 1,
-  "route": "XGRChain native XGR <-> Base synthetic XGR",
+  "route": "XGRChain native XGR <-> Base wXGR",
   "lastUpdated": "2026-10-04",
   "status": {
-    "protocol": "bidirectional_e2e_validated",
-    "forward": "e2e_validated",
-    "reverse": "e2e_validated_submission_disabled_relayer_stopped",
-    "publicBridge": "not_publicly_declared_open"
+    "protocol": "mainnet_bidirectional",
+    "forward": "mainnet_public_enabled",
+    "reverse": "mainnet_public_enabled",
+    "publicBridge": "publicly_available"
+  },
+  "publicBridge": {
+    "url": "https://bridge.xgr.network",
+    "status": "mainnet"
   },
   "networks": {
     "xgrchain": {
@@ -85,7 +89,13 @@
       "date": "2026-10-03",
       "pausableIsmPaused": false,
       "nativeRouterInboundEnabled": true,
-      "note": "Last confirmed during successful controlled Base -> XGR mainnet E2E. Query live state before operational use."
+      "note": "Confirmed during successful controlled Base -> XGR mainnet E2E. Current operational state must still be queried live."
+    },
+    "currentOperationalState": {
+      "observedDate": "2026-10-04",
+      "pausableIsmPaused": false,
+      "nativeRouterInboundEnabled": true,
+      "queryLiveBeforeUse": true
     }
   },
   "base": {
@@ -120,7 +130,12 @@
       "syntheticRouterOutboundEnabled": true,
       "outboundEnableTx": "0xdde77f3a5fbf567386ed47d2f263be844de2354fe57c61de1d368c83a0a07e45",
       "outboundEnableBlock": 52110347,
-      "note": "Query live state before operational use."
+      "note": "Confirmed during successful controlled Base -> XGR mainnet E2E. Current operational state must still be queried live."
+    },
+    "currentOperationalState": {
+      "observedDate": "2026-10-04",
+      "syntheticRouterOutboundEnabled": true,
+      "queryLiveBeforeUse": true
     }
   },
   "warp": {
@@ -138,11 +153,12 @@
       "address": "0x3b83687d77170d42feddfe221629cc21e771e021",
       "deploymentTx": null,
       "deploymentTxStatus": "unrecovered",
-      "asset": "synthetic XGR / wXGR",
+      "asset": "wXGR",
       "role": "mint_burn"
     },
     "forwardE2eTested": true,
-    "reverseE2eTested": true
+    "reverseE2eTested": true,
+    "publicBidirectional": true
   },
   "e2eEvidence": {
     "xgrToBase": {
@@ -156,7 +172,7 @@
       "checkpointIndex": 3,
       "setId": 3,
       "nativeXgrLocked": true,
-      "syntheticXgrMinted": true
+      "wXgrMinted": true
     },
     "baseToXgr": {
       "status": "success",
@@ -170,31 +186,37 @@
       "destinationBlock": 11140781,
       "destinationGasUsed": 461505,
       "recipient": "0x6a6415Aa1c945Ee437336c136c2de9E8baB1F05E",
-      "syntheticXgrBurned": true,
+      "wXgrBurned": true,
       "nativeXgrUnlocked": true
     }
   },
   "runtime": {
+    "queryLiveBeforeUse": true,
+    "observedDate": "2026-10-04",
     "forward": {
       "attestationRoute": "base",
       "signatureFormat": "eip2537",
-      "referenceSubmitEnabled": true,
-      "processStatus": "verify_live"
+      "submitEnabled": true,
+      "processStatus": "running",
+      "state": "mainnet_public_enabled"
     },
     "reverse": {
       "attestationRoute": "base_to_xgr",
       "signatureFormat": "compressed",
-      "submitEnabled": false,
-      "processStatus": "stopped",
-      "state": "e2e_validated_not_automatically_submitting"
+      "submitEnabled": true,
+      "processStatus": "running",
+      "state": "mainnet_public_enabled",
+      "originRpc": "https://base-rpc.publicnode.com"
     }
   },
   "availabilitySemantics": {
     "deployedDoesNotMeanPublic": true,
     "e2eValidatedDoesNotMeanContinuouslyEnabled": true,
-    "runtimeStateMustBeCheckedSeparately": true
+    "runtimeStateMustBeCheckedSeparately": true,
+    "currentRoutePubliclyAvailable": true
   },
   "sourceState": {
-    "canonicalBranch": "main"
+    "canonicalBranch": "main",
+    "implementationStatus": "mainnet"
   }
 }
