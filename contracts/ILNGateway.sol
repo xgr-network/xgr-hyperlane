@@ -43,6 +43,8 @@ contract ILNGateway {
 
     IILNRouteRegistry public immutable ilnRegistry;
     address public immutable warpRouter;
+    address public immutable warpToken;
+    bool public immutable nativeQuoteIncludesPrincipal;
     address public immutable mailbox;
     address public immutable merkleTreeHook;
     IXGRInterchainValidatorSetV2 public immutable validatorSetMirror;
@@ -105,7 +107,8 @@ contract ILNGateway {
         address warpRouter_,
         address mailbox_,
         address merkleTreeHook_,
-        address validatorSetMirror_
+        address validatorSetMirror_,
+        bool nativeQuoteIncludesPrincipal_
     ) {
         if (
             registry_ == address(0) ||
@@ -115,7 +118,12 @@ contract ILNGateway {
             validatorSetMirror_ == address(0)
         ) revert InvalidConfiguration();
 
-        if (IILNWarpRouter(warpRouter_).token() != warpRouter_) {
+        address token = IILNWarpRouter(warpRouter_).token();
+        if (
+            token != address(0) &&
+            token != warpRouter_
+        ) revert InvalidConfiguration();
+        if (token != address(0) && nativeQuoteIncludesPrincipal_) {
             revert InvalidConfiguration();
         }
 
@@ -126,6 +134,8 @@ contract ILNGateway {
 
         ilnRegistry = IILNRouteRegistry(registry_);
         warpRouter = warpRouter_;
+        warpToken = token;
+        nativeQuoteIncludesPrincipal = nativeQuoteIncludesPrincipal_;
         mailbox = mailbox_;
         merkleTreeHook = merkleTreeHook_;
         validatorSetMirror = set;
@@ -219,13 +229,15 @@ contract ILNGateway {
             revert InvalidValue(expectedValue, msg.value);
         }
 
-        if (
-            !IILNERC20(warpRouter).transferFrom(
-                msg.sender,
-                address(this),
-                amount
-            )
-        ) revert TokenTransferFailed();
+        if (warpToken != address(0)) {
+            if (
+                !IILNERC20(warpToken).transferFrom(
+                    msg.sender,
+                    address(this),
+                    amount
+                )
+            ) revert TokenTransferFailed();
+        }
 
         messageId = IILNWarpRouter(warpRouter).transferRemote{
             value: routerNativeFeeWei
@@ -421,17 +433,26 @@ contract ILNGateway {
         for (uint256 i = 0; i < quotes.length; i++) {
             if (quotes[i].token == address(0)) {
                 nativeFeeWei += quotes[i].amount;
-            } else if (quotes[i].token == warpRouter) {
+            } else if (
+                warpToken != address(0) &&
+                quotes[i].token == warpToken
+            ) {
                 tokenQuoted += quotes[i].amount;
             } else {
                 revert UnsupportedWarpFee();
             }
         }
 
-        // Hyperlane versions in the supported deployment family either omit the
-        // synthetic principal from token-denominated quotes or include the exact
-        // principal amount. Any extra token-denominated fee is intentionally
-        // rejected for the Base MVP rather than guessed.
+        if (warpToken == address(0)) {
+            if (!nativeQuoteIncludesPrincipal) {
+                nativeFeeWei += amount;
+            }
+            return nativeFeeWei;
+        }
+
+        // The currently deployed synthetic route has no token-denominated
+        // protocol fee. Accept either no token quote or an exact principal echo,
+        // but fail closed on any extra token charge.
         if (tokenQuoted != 0 && tokenQuoted != amount) {
             revert UnsupportedWarpFee();
         }
