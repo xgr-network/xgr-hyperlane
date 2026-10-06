@@ -15,7 +15,7 @@ contract MockILNWarpRouter is IILNWarpRouter {
     mapping(address => uint256) public balanceOf;
     mapping(address => mapping(address => uint256)) public allowance;
 
-    function token() external view returns (address) {
+    function token() external view override returns (address) {
         return address(this);
     }
 
@@ -52,7 +52,7 @@ contract MockILNWarpRouter is IILNWarpRouter {
         uint32,
         bytes32,
         uint256 amount
-    ) external view returns (ILNQuote[] memory quotes) {
+    ) external view override returns (ILNQuote[] memory quotes) {
         quotes = new ILNQuote[](3);
         quotes[0] = ILNQuote({
             token: address(0),
@@ -72,7 +72,7 @@ contract MockILNWarpRouter is IILNWarpRouter {
         uint32 destination,
         bytes32 recipient,
         uint256 amount
-    ) external payable returns (bytes32 messageId) {
+    ) external payable override returns (bytes32 messageId) {
         require(msg.value == nativeFeeWei, "native fee");
         require(balanceOf[msg.sender] >= amount, "bridge balance");
 
