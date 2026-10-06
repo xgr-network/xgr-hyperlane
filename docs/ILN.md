@@ -359,71 +359,89 @@ A critical ILN requirement is:
 
 > Foreign contracts must not be able to use the XGR validator quorum as a free generic consensus or attestation service.
 
-The current v3.1.1 worker attests configured canonical checkpoint roots.
+v3.1.2 therefore no longer authorizes an entire Hyperlane checkpoint root generically.
 
-For ILN, eligibility must become stricter.
+The source Warp router remains the actual Hyperlane message sender. The canonical ILNGateway is the fee-qualified entry point in front of that router.
 
-A validator must only create an ILN-authorizing attestation when the operation satisfies the canonical ILN policy for that route.
+For every ILN operation the Gateway must atomically:
 
-At minimum the validator-side decision must bind the operation to:
+1. read the canonical source route;
+2. require / escrow the native validator fee;
+3. invoke the canonical source Warp router;
+4. receive the returned Hyperlane `messageId`;
+5. emit:
 
-- the configured source chain,
-- the configured source domain,
-- the canonical source Mailbox,
-- the canonical checkpoint path / hook,
-- an allowed ILN origin contract or router,
-- an allowed destination route,
-- the corresponding fee-qualified operation,
-- the configured source confirmation policy.
+~~~solidity
+event ILNOperation(
+    bytes32 indexed messageId,
+    uint32 indexed destinationDomain,
+    uint256 validatorFeeWei
+);
+~~~
 
-The protocol must fail closed when these conditions are not met.
+Validators scan this event only from the canonical Gateway after the source confirmation policy has been satisfied.
 
-### 8.1 Checkpoint-root consideration
+The resulting BLS payload is message-specific and binds:
 
-The existing BLS model signs Merkle checkpoint roots rather than arbitrary application payloads.
+- source chain and domain,
+- destination domain,
+- validator set ID,
+- exact confirmed source block,
+- source ILN registry,
+- canonical ILNGateway,
+- canonical source Warp router,
+- canonical Mailbox,
+- canonical MerkleTreeHook,
+- canonical destination Warp router,
+- the native validator fee escrowed for that operation,
+- the authorized Hyperlane message ID,
+- checkpoint root and index.
 
-Therefore application-level filtering must not be treated as a cosmetic UI rule.
+An unrelated contract or a user calling the Warp router directly may still create an ordinary Hyperlane message and alter the common Merkle root. That message does **not** receive a canonical Gateway `ILNOperation` record, so XGR validators do not create an ILN authorization for its message ID.
 
-The v3.1.2 design must ensure that an attested checkpoint cannot be repurposed by an unrelated application to obtain XGR-backed authorization.
+The destination-side ILN security module must additionally verify that the actual Hyperlane message being processed has exactly the `authorizedMessageId` contained in the BLS payload and is included in the signed Merkle root.
 
-Acceptable implementation strategies include, subject to final engineering validation:
+This gives the important security boundary:
 
-1. an ILN-specific canonical checkpoint path / hook;
-2. explicit ILN message eligibility in the native worker combined with destination-side sender / recipient restrictions;
-3. an ILN-specific security module that cryptographically limits which messages may use the attestation;
-4. an equivalent mechanism preserving the same fail-closed invariant.
+~~~text
+signed checkpoint root
+        +
+authorized messageId
+        +
+canonical route context
+        +
+Gateway fee proof
+        =
+one authorized ILN message
+~~~
 
-The production v3.1.1 bridge must remain compatible while this additional ILN authorization boundary is introduced.
-
----
+The root alone is never sufficient for ILN authorization.
 
 ## 9. Validator fee eligibility
 
-For an ILN operation, validator signing must require evidence that the validator fee for that hop was correctly created on the source chain.
+Validator signing is derived independently from canonical source-chain data.
+
+A message becomes eligible only when a confirmed canonical Gateway operation exists for that exact message ID:
 
 ~~~text
-canonical ILN operation
-        │
-        ├── route valid
-        ├── source finalized
-        ├── native fee escrowed
-        └── message eligible
-                │
-                ▼
-        validator may sign
+canonical ILNGateway
+        ↓
+native fee escrowed atomically
+        ↓
+canonical Warp transfer succeeds
+        ↓
+ILNOperation(messageId, destinationDomain, fee)
+        ↓
+source confirmations satisfied
+        ↓
+validator independently verifies operation + route + checkpoint
+        ↓
+validator may sign XGR_ILN_CHECKPOINT_V1
 ~~~
 
-If the fee condition is not satisfied:
+The relayer is not an authority for fee payment or message eligibility.
 
-~~~text
-do not sign
-~~~
-
-The fee mechanism must not rely on the relayer reporting that a fee was paid.
-
-Validators must derive the required state independently from canonical source-chain data.
-
----
+A fee update executed later in the same block must not invalidate an operation that was valid earlier in that block. The signed fee therefore comes from the atomic Gateway operation for the authorized message ID rather than from a later end-of-block fee comparison.
 
 ## 10. Fee distribution
 
@@ -619,48 +637,29 @@ Legacy route-local source fields such as `SOURCE_MAILBOX_ADDR`, `SOURCE_MERKLE_T
 
 ### 12.2 v3.1.2 source-network cutover
 
-v3.1.2 is a breaking Interchain security cutover rather than a compatibility mode.
+v3.1.2 is a breaking Interchain security cutover.
 
-The generic v3.1.1 checkpoint signer is removed from the runtime. Legacy `checkpoint_vote` gossip is rejected and the v3.1.2 Interchain network uses the separate P2P topic:
+The generic v3.1.1 checkpoint signer is removed from the runtime, legacy `checkpoint_vote` gossip is rejected, and the new Interchain network uses:
 
 ~~~text
 /xgr/interchain/2.0.0
 ~~~
 
-There is no implicit route fallback. If no explicit ILN routes are configured, checkpoint signing is idle.
+There is no implicit route fallback.
 
-For an active v3.1.2 route, validators read the source route from the configured source-network ILN registry and sign the domain-separated payload:
-
-~~~text
-XGR_ILN_CHECKPOINT_V1
-~~~
-
-The payload binds the exact confirmed source block, source registry, Gateway, Mailbox, dedicated ILN MerkleTreeHook, destination router, validator fee, destination validator-set ID, checkpoint root and index.
-
-Every receiving validator independently re-verifies that exact source block before accepting the vote.
-
-The dedicated ILN hook is part of the authorization boundary and must expose:
+The route ENV contains only configured network names:
 
 ~~~text
-mailbox()
-authorizedSender()
-count()
-root()
+XGR_INTERCHAIN_ROUTE_BASE_TO_XGR_SOURCE_NETWORK=base
+XGR_INTERCHAIN_ROUTE_BASE_TO_XGR_DESTINATION=xgr
 ~~~
 
-with `authorizedSender() == canonical ILNGateway`.
+Canonical contract addresses and mutable fee state come from the source network's quorum-governed ILN registry.
 
-The canonical Gateway must expose:
+Validators persist their source scan cursor and pending local votes. The initial scan starts at `ILNGateway.activationBlock()`; completed attestations are indexed by the authorized Hyperlane `messageId` and exposed through a read-only RPC.
 
-~~~text
-ilnRegistry()
-mailbox()
-merkleTreeHook()
-~~~
+All Interchain validators must be upgraded before any ILN route is activated. The v3.1.2 binary may be rolled out first with no active ILN routes.
 
-and those values must match the source registry route. This prevents an unrelated Mailbox user from entering the ILN-attested checkpoint tree.
-
-All Interchain validators must be upgraded to v3.1.2 before ILN activation. The node can be rolled out first with no active ILN routes; ILN contracts can be deployed and configured afterward.
 
 ---
 
