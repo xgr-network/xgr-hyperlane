@@ -916,6 +916,7 @@ Base → XGRChain
 Implementation documentation:
 
 - [Architecture](docs/architecture.md)
+- [Interchain Liquidity Network (ILN)](docs/ILN.md)
 - [Operations and rollout](docs/operations.md)
 - [Deployment inventory](docs/DEPLOYMENTS.md)
 - [Security policy](SECURITY.md)
