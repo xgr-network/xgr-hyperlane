@@ -16,6 +16,7 @@ env_file() {
       ;;
     reverse) printf '%s\n' "$RUNTIME_DIR/.env.relayer.reverse" ;;
     iln-base-to-xgr) printf '%s\n' "$RUNTIME_DIR/.env.relayer.iln.base-to-xgr" ;;
+    iln-xgr-to-base) printf '%s\n' "$RUNTIME_DIR/.env.relayer.iln.xgr-to-base" ;;
     *) return 1 ;;
   esac
 }
@@ -23,7 +24,7 @@ env_file() {
 script_file() {
   case "$1" in
     forward|reverse) printf '%s\n' "$RUNTIME_DIR/native-relayer/index.mjs" ;;
-    iln-base-to-xgr) printf '%s\n' "$RUNTIME_DIR/native-relayer/iln.mjs" ;;
+    iln-base-to-xgr|iln-xgr-to-base) printf '%s\n' "$RUNTIME_DIR/native-relayer/iln.mjs" ;;
     *) return 1 ;;
   esac
 }
@@ -33,6 +34,7 @@ pid_file() {
     forward) printf '%s\n' "$STATE_DIR/native-relayer.pid" ;;
     reverse) printf '%s\n' "$STATE_DIR/native-relayer-reverse.pid" ;;
     iln-base-to-xgr) printf '%s\n' "$STATE_DIR/native-iln-base-to-xgr.pid" ;;
+    iln-xgr-to-base) printf '%s\n' "$STATE_DIR/native-iln-xgr-to-base.pid" ;;
     *) return 1 ;;
   esac
 }
@@ -42,6 +44,7 @@ log_file() {
     forward) printf '%s\n' "$STATE_DIR/native-relayer.log" ;;
     reverse) printf '%s\n' "$STATE_DIR/native-relayer-reverse.log" ;;
     iln-base-to-xgr) printf '%s\n' "$STATE_DIR/native-iln-base-to-xgr.log" ;;
+    iln-xgr-to-base) printf '%s\n' "$STATE_DIR/native-iln-xgr-to-base.log" ;;
     *) return 1 ;;
   esac
 }
@@ -164,7 +167,7 @@ for_each_target() {
   local target="$2"
 
   case "$target" in
-    forward|reverse|iln-base-to-xgr)
+    forward|reverse|iln-base-to-xgr|iln-xgr-to-base)
       "${action}_one" "$target"
       ;;
     all)
@@ -174,7 +177,7 @@ for_each_target() {
       "${action}_one" reverse
       ;;
     *)
-      echo "target must be forward, reverse, iln-base-to-xgr or all" >&2
+      echo "target must be forward, reverse, iln-base-to-xgr, iln-xgr-to-base or all" >&2
       return 1
       ;;
   esac
@@ -199,13 +202,13 @@ case "$ACTION" in
     ;;
   logs)
     if [ "$TARGET" = "all" ]; then
-      echo "logs requires forward, reverse or iln-base-to-xgr" >&2
+      echo "logs requires forward, reverse, iln-base-to-xgr or iln-xgr-to-base" >&2
       exit 1
     fi
     logs_one "$TARGET"
     ;;
   *)
-    echo "usage: $0 {start|stop|restart|status|logs} [forward|reverse|iln-base-to-xgr|all]" >&2
+    echo "usage: $0 {start|stop|restart|status|logs} [forward|reverse|iln-base-to-xgr|iln-xgr-to-base|all]" >&2
     exit 1
     ;;
 esac
