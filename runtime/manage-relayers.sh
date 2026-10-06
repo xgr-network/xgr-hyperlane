@@ -2,7 +2,6 @@
 
 RUNTIME_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 STATE_DIR="$RUNTIME_DIR/runtime-state"
-SCRIPT="$RUNTIME_DIR/native-relayer/index.mjs"
 
 mkdir -p "$STATE_DIR"
 
@@ -16,26 +15,33 @@ env_file() {
       fi
       ;;
     reverse) printf '%s\n' "$RUNTIME_DIR/.env.relayer.reverse" ;;
+    iln-base-to-xgr) printf '%s\n' "$RUNTIME_DIR/.env.relayer.iln.base-to-xgr" ;;
+    *) return 1 ;;
+  esac
+}
+
+script_file() {
+  case "$1" in
+    forward|reverse) printf '%s\n' "$RUNTIME_DIR/native-relayer/index.mjs" ;;
+    iln-base-to-xgr) printf '%s\n' "$RUNTIME_DIR/native-relayer/iln.mjs" ;;
     *) return 1 ;;
   esac
 }
 
 pid_file() {
   case "$1" in
-    forward) printf '%s
-' "$STATE_DIR/native-relayer.pid" ;;
-    reverse) printf '%s
-' "$STATE_DIR/native-relayer-reverse.pid" ;;
+    forward) printf '%s\n' "$STATE_DIR/native-relayer.pid" ;;
+    reverse) printf '%s\n' "$STATE_DIR/native-relayer-reverse.pid" ;;
+    iln-base-to-xgr) printf '%s\n' "$STATE_DIR/native-iln-base-to-xgr.pid" ;;
     *) return 1 ;;
   esac
 }
 
 log_file() {
   case "$1" in
-    forward) printf '%s
-' "$STATE_DIR/native-relayer.log" ;;
-    reverse) printf '%s
-' "$STATE_DIR/native-relayer-reverse.log" ;;
+    forward) printf '%s\n' "$STATE_DIR/native-relayer.log" ;;
+    reverse) printf '%s\n' "$STATE_DIR/native-relayer-reverse.log" ;;
+    iln-base-to-xgr) printf '%s\n' "$STATE_DIR/native-iln-base-to-xgr.log" ;;
     *) return 1 ;;
   esac
 }
@@ -52,9 +58,10 @@ is_running() {
 
 start_one() {
   local route="$1"
-  local ef pf lf pid
+  local ef sf pf lf pid
 
   ef="$(env_file "$route")" || return 1
+  sf="$(script_file "$route")" || return 1
   pf="$(pid_file "$route")" || return 1
   lf="$(log_file "$route")" || return 1
 
@@ -67,8 +74,8 @@ start_one() {
     echo "missing env file: $ef" >&2
     return 1
   fi
-  if [ ! -f "$SCRIPT" ]; then
-    echo "missing relayer script: $SCRIPT" >&2
+  if [ ! -f "$sf" ]; then
+    echo "missing relayer script: $sf" >&2
     return 1
   fi
 
@@ -87,7 +94,7 @@ start_one() {
       export RELAYER_PRIVATE_KEY
     fi
 
-    nohup node "$SCRIPT" >> "$lf" 2>&1 &
+    nohup node "$sf" >> "$lf" 2>&1 &
     echo $! > "$pf"
   )
 
@@ -157,15 +164,17 @@ for_each_target() {
   local target="$2"
 
   case "$target" in
-    forward|reverse)
+    forward|reverse|iln-base-to-xgr)
       "${action}_one" "$target"
       ;;
     all)
+      # "all" intentionally means the established production relayers only.
+      # The ILN relayer must always be started explicitly until ILN is activated.
       "${action}_one" forward || return 1
       "${action}_one" reverse
       ;;
     *)
-      echo "target must be forward, reverse or all" >&2
+      echo "target must be forward, reverse, iln-base-to-xgr or all" >&2
       return 1
       ;;
   esac
@@ -190,13 +199,13 @@ case "$ACTION" in
     ;;
   logs)
     if [ "$TARGET" = "all" ]; then
-      echo "logs requires forward or reverse" >&2
+      echo "logs requires forward, reverse or iln-base-to-xgr" >&2
       exit 1
     fi
     logs_one "$TARGET"
     ;;
   *)
-    echo "usage: $0 {start|stop|restart|status|logs} [forward|reverse|all]" >&2
+    echo "usage: $0 {start|stop|restart|status|logs} [forward|reverse|iln-base-to-xgr|all]" >&2
     exit 1
     ;;
 esac
