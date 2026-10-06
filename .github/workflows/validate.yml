@@ -21,6 +21,8 @@ jobs:
           set -euo pipefail
           test ! -e runtime/.env.relayer
           test ! -e runtime/.env.relayer.reverse
+          test ! -e runtime/.env.relayer.iln.base-to-xgr
+          test ! -e runtime/.env.relayer.iln.xgr-to-base
           if git grep -nE '(^|=)(0x)?[0-9a-fA-F]{64}$' -- runtime ':!runtime/*.example'; then
             echo "Potential raw private key found in tracked runtime files" >&2
             exit 1
