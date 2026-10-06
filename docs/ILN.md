@@ -433,21 +433,33 @@ The long-term invariant is:
 
 The attestation already exposes a signer bitmap and aggregate BLS proof.
 
-The exact source-chain settlement mechanism is an implementation item for v3.1.2.
+The v3.1.2 settlement model is **claim-based**.
 
-A valid implementation may use:
+After a completed attestation exists, any compatible caller may submit the settlement proof to the source-chain ILN fee contract:
 
-- claim-based accounting,
-- accumulated per-validator balances,
-- a source-chain reward registry,
-- a verified signer bitmap,
-- equivalent non-custodial settlement logic.
+~~~text
+attestation + setId + signerBitmap + aggregate signature
+        ↓
+settle(...)
+        ↓
+verify quorum and prevent duplicate settlement
+        ↓
+claimable[signer] += equal signer share
+~~~
 
-The preferred model is **claim-based** rather than pushing native currency to every signer during the user's bridge transaction.
+Only validators whose bits are set in the accepted signer bitmap receive the fee for that operation.
 
-This avoids making the user transaction scale linearly with validator count.
+For ILN v1, the fee is divided **equally among the validators that actually signed the accepted quorum**.
 
-The fee distribution design must not turn the relayer into a trusted custodian.
+The contract accumulates balances per validator. Validators later withdraw their accumulated native-currency rewards themselves:
+
+~~~text
+validator → claim() → native source-chain currency
+~~~
+
+This avoids pushing one native-currency transfer per signer during the user's bridge transaction and allows validators to batch many small rewards into one withdrawal.
+
+Settlement and withdrawal must not require an XGR-operated relayer or custodian. A settlement transaction may be submitted by any party, while only the validator's registered payout address may claim that validator's accrued balance.
 
 ---
 
@@ -506,7 +518,36 @@ Possible route fields include:
 - confirmation policy,
 - enabled / disabled state.
 
-The exact governance mechanism remains to be finalized.
+Canonical ILN route state and mutable ILN parameters are governed by the Interchain validator quorum rather than by a privileged administrator key.
+
+The governance lifecycle is:
+
+~~~text
+proposal create
+      ↓
+proposal ID / canonical payload
+      ↓
+Interchain validators inspect and approve/sign
+      ↓
+unweighted 2/3 BLS quorum
+      ↓
+proposal becomes executable
+      ↓
+any party may execute
+      ↓
+on-chain state changes
+~~~
+
+Initial ILN v1 proposal types are:
+
+- FEE_UPDATE,
+- ROUTE_ADD,
+- ROUTE_ENABLE,
+- ROUTE_DISABLE.
+
+A fee update binds at minimum the source chain, destination domain, new native fee, validator set context and a replay-safe proposal nonce / identifier.
+
+The proposer and executor do not need privileged authority. The BLS quorum is the authorization.
 
 The target security property is:
 
@@ -517,6 +558,31 @@ XGR GmbH relayer configuration
 ~~~
 
 A relayer may choose what it delivers. It must not define what is valid.
+
+---
+
+## 12.1 Node bootstrap configuration
+
+The node environment is not the canonical source of individual ILN route addresses.
+
+The node should be configured with the minimum bootstrap information required to locate the canonical on-chain ILN registry, for example:
+
+~~~text
+XGR_INTERCHAIN_ILN_REGISTRY_ADDR=0x...
+~~~
+
+together with the RPC / chain connectivity required to read it.
+
+The canonical gateway, route state and mutable ILN parameters are then read from the quorum-governed on-chain registry.
+
+Therefore:
+
+~~~text
+ENV = bootstrap pointer
+on-chain ILN registry = protocol truth
+~~~
+
+A validator operator changing a local environment variable must not be able to redefine a valid ILN route.
 
 ---
 
@@ -719,14 +785,20 @@ The planned xgr-node v3.1.2 scope should remain narrowly focused.
 Required node-side changes are expected to include:
 
 1. ILN route / application eligibility checks before signing;
-2. native source-chain fee verification for ILN operations;
-3. preservation of existing v3.1.1 bridge behavior;
-4. explicit fail-closed handling for non-canonical ILN messages;
-5. support for the new XDC route;
-6. deterministic tests covering foreign-contract abuse attempts;
-7. deterministic tests covering missing or invalid fee conditions.
+2. canonical ILN registry discovery from a minimal bootstrap configuration;
+3. native source-chain fee verification for ILN operations;
+4. ILN governance proposal creation, inspection, validator approval/signing and quorum aggregation;
+5. initial governance actions for FEE_UPDATE, ROUTE_ADD, ROUTE_ENABLE and ROUTE_DISABLE;
+6. preservation of existing v3.1.1 bridge behavior;
+7. explicit fail-closed handling for non-canonical ILN messages;
+8. support for the new XDC route;
+9. deterministic tests covering foreign-contract abuse attempts;
+10. deterministic tests covering missing or invalid fee conditions;
+11. deterministic tests covering stale/replayed governance proposals and insufficient quorum.
 
 The ILN worker remains outside weighted-IBFT consensus-critical execution.
+
+The v3.1.2 design does **not** require a chain hard fork as long as it remains confined to the Interchain worker, ordinary EVM contracts and existing BLS execution support. It must not modify IBFT block-validity rules, EVM state-transition rules or consensus-critical execution.
 
 An ILN failure must not stop XGRChain block production or finality.
 
@@ -840,6 +912,9 @@ with:
 | Base USDC / wXGR ILN liquidity | Planned |
 | ILNGateway / FeeVault | Planned |
 | Native source-chain validator fee | Planned |
+| Equal-share signer settlement + claim() | Design fixed / implementation planned |
+| 2/3 BLS proposal governance | Design fixed / implementation planned |
+| On-chain canonical ILN route registry | Design fixed / implementation planned |
 | ILN application / route authorization | Planned |
 | xgr-node v3.1.2 ILN eligibility | Planned |
 | XGRChain ↔ XDC bridge | Planned |
