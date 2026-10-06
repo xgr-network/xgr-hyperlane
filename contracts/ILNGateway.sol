@@ -41,7 +41,7 @@ interface IILNERC20 {
 contract ILNGateway {
     bytes private constant CHECKPOINT_DOMAIN_V1 = "XGR_ILN_CHECKPOINT_V1";
 
-    IILNRouteRegistry public immutable registry;
+    IILNRouteRegistry public immutable ilnRegistry;
     address public immutable warpRouter;
     address public immutable mailbox;
     address public immutable merkleTreeHook;
@@ -124,7 +124,7 @@ contract ILNGateway {
         address verifierAddress = set.verifier();
         if (verifierAddress == address(0)) revert InvalidConfiguration();
 
-        registry = IILNRouteRegistry(registry_);
+        ilnRegistry = IILNRouteRegistry(registry_);
         warpRouter = warpRouter_;
         mailbox = mailbox_;
         merkleTreeHook = merkleTreeHook_;
@@ -158,7 +158,7 @@ contract ILNGateway {
             address destinationRouter,
             uint256 routeValidatorFee,
             bool enabled
-        ) = registry.getRoute(destinationDomain);
+        ) = ilnRegistry.getRoute(destinationDomain);
 
         _validateRoute(
             routeGateway,
@@ -196,7 +196,7 @@ contract ILNGateway {
             address destinationRouter,
             uint256 validatorFeeWei,
             bool enabled
-        ) = registry.getRoute(destinationDomain);
+        ) = ilnRegistry.getRoute(destinationDomain);
 
         _validateRoute(
             routeGateway,
@@ -372,7 +372,7 @@ contract ILNGateway {
             bytes4(operation.destinationDomain),
             bytes8(setId),
             bytes8(operation.sourceBlockNumber),
-            bytes20(address(registry)),
+            bytes20(address(ilnRegistry)),
             bytes20(address(this)),
             bytes20(warpRouter),
             bytes20(mailbox),
