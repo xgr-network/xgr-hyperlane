@@ -80,3 +80,90 @@ A REMOVE transition is non-payable. The removed validator's reserve funds bounde
 6. validate a bounded end-to-end transfer.
 
 Do not deploy a verifier format on a destination until the required BLS execution support has been verified.
+
+
+## ILN v3.1.2 Base MVP
+
+The Base-only ILN MVP adds an application-specific security layer on top of
+the existing Warp routers.
+
+New contracts:
+
+- `IILNRouteRegistry`
+- `ILNRouteRegistry`
+- `ILNGateway`
+- `XGRILNInterchainISMV2`
+
+### ILNRouteRegistry
+
+Stores the canonical route tuple consumed by xgr-node v3.1.2.
+
+The registry is bound to exactly one destination-domain validator-set
+contract. Route mutation has no owner/admin path. It accepts only the
+canonical `XGR_ILN_GOVERNANCE_V1` payload with an unweighted two-thirds
+BLS quorum.
+
+### ILNGateway
+
+The Gateway is the fee-qualified source entry point.
+
+It does not replace the Warp router as Hyperlane sender. It:
+
+1. reads the canonical route;
+2. enforces the configured positive validator fee;
+3. invokes the existing Warp router;
+4. receives the real Hyperlane `messageId`;
+5. emits `ILNOperation(messageId,destinationDomain,validatorFeeWei)`;
+6. retains only the validator-fe portion for later signer settlement.
+
+The implementation supports the two Base-MVP asset modes:
+
+- Base synthetic wXGR router;
+- XGRChain native XGR router.
+
+Native quote-principal semantics are explicit constructor configuration and
+are never guessed at runtime.
+
+### XGRILNInterchainISMV2
+
+The destination ILN ISM verifies `XGR_ILN_CHECKPOINT_V1`.
+
+Authorization is message-specific. Verification requires:
+
+- exact origin and destination domains;
+- exact source Warp router as Hyperlane sender;
+- exact destination Warp router as recipient;
+- `keccak256(message) == authorizedMessageId`;
+- Merkle inclusion of that message in the signed root;
+- exact source route context;
+- exact source operation block and validator fee;
+- historical validator-set lookup by `setId`;
+- unweighted two-thirds BLS quorum.
+
+A signed checkpoint root without the matching authorized message ID is not
+sufficient.
+
+### Fee settlement
+
+The source Gateway accepts settlement from any caller after a valid completed
+attestation exists.
+
+The accepted signer bitmap determines the validators credited for the
+operation. Balances are claim-based and do not require custody by a specific
+relayer.
+
+### Deployment
+
+The Base-MVP deployment scripts are in:
+
+`script/DeployILNBaseSpoke.s.sol`
+
+They deploy contracts only. They deliberately do not:
+
+- execute ILN ROUTE_ADD;
+- alter the Base wXGR router ISM;
+- alter XGRChain DomainRoutingISM;
+- start relayers.
+
+The controlled activation sequence is documented in
+`docs/ILN_BASE_MVP.md`.
