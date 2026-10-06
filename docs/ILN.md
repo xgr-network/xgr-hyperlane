@@ -1,11 +1,13 @@
 # XGR Interchain Liquidity Network (ILN)
 
 **Document ID:** XGR-ILN-CONCEPT  
-**Status:** Design / planned implementation  
+**Status:** Base-MVP implementation / deployment preparation  
 **Last updated:** 2026-10-06  
 **Current production baseline:** XGR Interchain on xgr-node v3.1.1  
 **Target implementation baseline:** xgr-node v3.1.2 or later  
-**Initial ILN corridor:** Base ↔ XGRChain ↔ XDC
+**Initial ILN corridor:** Base ↔ XGRChain
+**Future spoke:** XDC (deferred from MVP)
+**Deployment runbook:** `docs/ILN_BASE_MVP.md`
 
 ---
 
@@ -47,22 +49,26 @@ XGRChain therefore becomes the common settlement and transit layer without requi
 
 ## 2. Initial MVP
 
-The first proposed ILN corridor is:
+The first ILN deployment is intentionally limited to the existing Base spoke:
 
 ~~~text
 Base
   USDC / wXGR liquidity
         │
+        │ message-specific XGR Interchain
         ▼
 XGRChain
-  native XGR transit
-        │
-        ▼
-XDC Network
-  wXGR / XDC liquidity
+  native XGR
 ~~~
 
-Example user route:
+Both bridge directions are part of the MVP:
+
+~~~text
+Base wXGR → native XGR
+native XGR → Base wXGR
+~~~
+
+The local Base user flow can therefore be:
 
 ~~~text
 USDC on Base
@@ -71,26 +77,18 @@ USDC on Base
     ▼
 wXGR on Base
     │
-    │ bridge hop 1
+    │ ILN bridge
     ▼
 native XGR on XGRChain
-    │
-    │ bridge hop 2
-    ▼
-wXGR on XDC
-    │
-    │ local swap
-    ▼
-native XDC
 ~~~
 
-The intended user-level result is:
+or the reverse path back to Base liquidity.
 
-~~~text
-USDC on Base → XDC
-~~~
+The initial pool is deliberately small (approximately 500 USDC on the
+USDC side) and is intended to prove route operation and early market demand,
+not high-capacity execution.
 
-while the protocol internally uses XGR as the common routing asset.
+XDC is a future spoke and is not part of this MVP.
 
 ---
 
@@ -832,7 +830,7 @@ Exact contract count should be minimized.
 
 ## 19. XDC spoke
 
-The initial XDC spoke should use V2-compatible XGR-native security.
+A future XDC spoke should use V2-compatible XGR-native security.
 
 At minimum the XDC integration requires:
 
@@ -845,7 +843,7 @@ At minimum the XDC integration requires:
 - native relayer compatibility,
 - source-chain native XDC fee handling for XDC-origin ILN hops.
 
-The intended liquidity pool is:
+The future intended XDC liquidity pool is:
 
 ~~~text
 wXGR / XDC
@@ -930,22 +928,24 @@ Invalid route, fee, signer set, signature, proof or safety state must reject the
 
 ## 23. Implementation sequence
 
-A conservative implementation order is:
+A conservative Base-MVP implementation order is:
 
-1. freeze this ILN concept and security invariants;
-2. design the exact v3.1.2 ILN eligibility rule;
-3. design the minimal ILNGateway / FeeVault interface;
-4. define source-chain validator reward settlement;
-5. implement canonical route authorization;
-6. add node-side ILN checks without changing current bridge behavior;
-7. add XDC destination contracts using V2-compatible security;
-8. deploy wXGR on XDC;
-9. validate XGRChain ↔ XDC bridge E2E;
-10. seed Base USDC / wXGR liquidity;
-11. seed XDC wXGR / XDC liquidity;
-12. validate a controlled Base USDC → XDC ILN route;
-13. expose route orchestration in the user-facing interface;
-14. publish operational and security documentation.
+1. build and release xgr-node v3.1.2;
+2. upgrade all Interchain validators with no active ILN routes;
+3. deploy the Base/XGR validator-set mirrors and destination RegistryV2 where required;
+4. deploy the Base and XGR source ILN registries and Gateways;
+5. deploy the message-specific destination ILN ISMs;
+6. create the XGR PausableISM + ILN-ISM aggregation for Base-origin messages;
+7. create and approve the two ROUTE_ADD proposals through validator quorum governance;
+8. execute the route proposals on their respective source-chain registries;
+9. perform the destination security cutover;
+10. run both ILN relayers in observe-only mode and require static validation;
+11. validate controlled tiny transfers in both directions;
+12. seed the small Base USDC / wXGR pool;
+13. expose live quotes / slippage in the user-facing route;
+14. consider additional spokes only after Base-MVP evidence.
+
+The exact operational sequence is maintained in `docs/ILN_BASE_MVP.md`.
 
 ---
 
@@ -959,10 +959,14 @@ USDC on Base
 wXGR on Base
     ↓
 native XGR on XGRChain
+~~~
+
+and the reverse bridge direction:
+
+~~~text
+native XGR on XGRChain
     ↓
-wXGR on XDC
-    ↓
-native XDC
+wXGR on Base
 ~~~
 
 with:
@@ -986,18 +990,18 @@ with:
 | XGR-native BLS quorum | Mainnet |
 | Replaceable relayer trust model | Mainnet architecture |
 | Base wXGR | Mainnet |
-| Base USDC / wXGR ILN liquidity | Planned |
-| ILNGateway / FeeVault | Planned |
-| Native source-chain validator fee | Planned |
-| Equal-share signer settlement + claim() | Design fixed / implementation planned |
+| Base USDC / wXGR ILN liquidity | Base MVP / small initial pool planned |
+| ILNGateway / FeeVault | Implemented in repository / deployment pending |
+| Native source-chain validator fee | Implemented in Gateway / deployment pending |
+| Equal-share signer settlement + claim() | Implemented in Gateway / deployment pending |
 | 2/3 BLS proposal governance | Node implementation complete on PoS_3; on-chain executor contract pending |
-| On-chain canonical ILN route registry | Node reader/interface fixed; contract deployment pending |
-| ILN application / route authorization | Planned |
+| On-chain canonical ILN route registry | Implemented in repository / deployment pending |
+| ILN application / route authorization | Message-specific ISM implemented / deployment pending |
 | xgr-node v3.1.2 ILN eligibility | Implemented on PoS_3; build/test validation pending |
-| XGRChain ↔ XDC bridge | Planned |
-| XDC wXGR | Planned |
-| XDC wXGR / XDC liquidity | Planned |
-| Base → XDC end-to-end ILN route | Planned |
+| XGRChain ↔ XDC bridge | Deferred / future spoke |
+| XDC wXGR | Deferred |
+| XDC wXGR / XDC liquidity | Deferred |
+| Base ↔ XGR Base-spoke ILN route | Implementation complete in repo / deployment pending |
 
 ---
 
