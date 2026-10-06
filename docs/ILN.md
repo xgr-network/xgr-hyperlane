@@ -608,6 +608,30 @@ on-chain ILN registry = protocol truth
 
 A validator operator changing a local environment variable must not be able to redefine a valid ILN route.
 
+### 12.2 v3.1.2 source-network cutover
+
+The presence of a network-scoped ILN registry address is an explicit v3.1.2 cutover for that **source network**.
+
+For example:
+
+~~~text
+XGR_INTERCHAIN_BASE_ILN_REGISTRY_ADDR=0x...
+~~~
+
+means that Base-origin traffic must no longer use the generic v3.1.1 checkpoint-signing path.
+
+The worker must therefore:
+
+- stop producing legacy checkpoint signatures for Base-origin routes;
+- reject legacy checkpoint votes received from peers for Base-origin routes;
+- never silently fall back to v3.1.1 signing while the Base ILN registry pointer is configured.
+
+The same rule applies independently to XGRChain, XDC and future source networks.
+
+This rule is source-scoped. Configuring the XGRChain ILN registry must not by itself disable a Base-origin route, and vice versa.
+
+During rollout, all Interchain validators should move a source network to ILN mode together. A mixed validator population can otherwise leave legacy signing active on nodes that have not yet configured the source-network ILN registry.
+
 ---
 
 ## 13. Relayer independence
