@@ -84,73 +84,74 @@ Do not deploy a verifier format on a destination until the required BLS executio
 
 ## ILN v3.1.2 Base MVP
 
-The Base-only ILN MVP adds an application-specific security layer on top of
-the existing Warp routers.
+The Base-only ILN MVP reuses the already deployed XGR Interchain validator
+security and adds only message-specific ILN authorization.
 
 New contracts:
 
-- `IILNRouteRegistry`
-- `ILNRouteRegistry`
 - `ILNGateway`
+- `XGRILNInterchainISM`
 - `XGRILNInterchainISMV2`
-
-### ILNRouteRegistry
-
-Stores the canonical route tuple consumed by xgr-node v3.1.2.
-
-The registry is bound to exactly one destination-domain validator-set
-contract. Route mutation has no owner/admin path. It accepts only the
-canonical `XGR_ILN_GOVERNANCE_V1` payload with an unweighted two-thirds
-BLS quorum.
 
 ### ILNGateway
 
-The Gateway is the fee-qualified source entry point.
+The Gateway is the fee-qualified source entry point and, for the Base MVP,
+also the immutable canonical route registry.
 
-It does not replace the Warp router as Hyperlane sender. It:
+`ilnRegistry()` returns the Gateway itself and `getRoute(uint32)` exposes
+one constructor-fixed route. There is no owner, route admin, mutable fee,
+validator-set mirror, or dynamic route-governance contract.
 
-1. reads the canonical route;
-2. enforces the configured positive validator fee;
-3. invokes the existing Warp router;
-4. receives the real Hyperlane `messageId`;
-5. emits `ILNOperation(messageId,destinationDomain,validatorFeeWei)`;
-6. retains only the validator-fe portion for later signer settlement.
+The Gateway:
 
-The implementation supports the two Base-MVP asset modes:
+1. enforces the configured positive validator fee;
+2. invokes the existing Warp router;
+3. receives the real Hyperlane `messageId`;
+4. emits `ILNOperation(messageId,destinationDomain,validatorFeeWei)`.
 
-- Base synthetic wXGR router;
-- XGRChain native XGR router.
+The existing Warp router remains the Hyperlane sender.
 
-Native quote-principal semantics are explicit constructor configuration and
-are never guessed at runtime.
+The implementation supports:
 
-### XGRILNInterchainISMV2
+- Base synthetic wXGR as source;
+- XGRChain native XGR as source.
 
-The destination ILN ISM verifies `XGR_ILN_CHECKPOINT_V1`.
+Synthetic Warp token-fe shapes outside the supported no-extra-fee Base MVP
+are rejected fail-closed. Native quote-principal semantics are explicit
+constructor configuration and are never guessed at runtime.
 
-Authorization is message-specific. Verification requires:
+### Destination ISMs
+
+`XGRILNInterchainISM` is the message-specific Base destination verifier.
+It deliberately reuses the existing Base V1 validator registry and EIP-2537
+BLS verifier.
+
+`XGRILNInterchainISMV2` is the message-specific XGRChain destination
+verifier. It reuses the existing XGRChain RegistryV2 and native compressed
+BLS verifier.
+
+Both verify `XGR_ILN_CHECKPOINT_V1` and require:
 
 - exact origin and destination domains;
 - exact source Warp router as Hyperlane sender;
 - exact destination Warp router as recipient;
 - `keccak256(message) == authorizedMessageId`;
-- Merkle inclusion of that message in the signed root;
-- exact source route context;
-- exact source operation block and validator fee;
-- historical validator-set lookup by `setId`;
-- unweighted two-thirds BLS quorum.
+- Merkle inclusion in the signed root;
+- exact source route context and source block;
+- positive validator fee;
+- unweighted two-thirds XGR Interchain BLS quorum.
 
 A signed checkpoint root without the matching authorized message ID is not
 sufficient.
 
-### Fee settlement
+### Launch fee
 
-The source Gateway accepts settlement from any caller after a valid completed
-attestation exists.
+xgr-node v3.1.2 requires a strictly positive validator fee. The Base MVP
+therefore uses a nominal value such as 1 wei.
 
-The accepted signer bitmap determines the validators credited for the
-operation. Balances are claim-based and do not require custody by a specific
-relayer.
+Signer-based fee distribution is intentionally deferred while the fee is
+economically negligible. It must be added and reviewed before introducing a
+material validator fee.
 
 ### Deployment
 
@@ -160,10 +161,10 @@ The Base-MVP deployment scripts are in:
 
 They deploy contracts only. They deliberately do not:
 
-- execute ILN ROUTE_ADD;
+- alter the existing validator registries;
 - alter the Base wXGR router ISM;
 - alter XGRChain DomainRoutingISM;
-- start relayers.
+- start ILN relayers.
 
 The controlled activation sequence is documented in
 `docs/ILN_BASE_MVP.md`.
