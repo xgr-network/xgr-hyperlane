@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {IILNRouteRegistry} from "./IILNRouteRegistry.sol";
-import {IXGRInterchainValidatorSetV2} from "./IXGRInterchainValidatorSetV2.sol";
-import {IXGRInterchainBLSVerifier} from "./XGRInterchainValidatorRegistry.sol";
-
 struct ILNQuote {
     address token;
     uint256 amount;
@@ -34,35 +30,27 @@ interface IILNERC20 {
     ) external returns (bool);
 }
 
-/// @notice Base-side fee-qualified entry point for synthetic wXGR -> XGR ILN transfers.
-/// @dev The deployed Warp router remains the Hyperlane sender. The Gateway pulls wXGR
-///      from the user, calls the canonical router, receives the real messageId and emits
-///      the exact ILNOperation event consumed by xgr-node v3.1.2.
+/// @notice Minimal immutable ILN v3.1.2 source gateway.
+/// @dev For the Base MVP the gateway is also the canonical route registry:
+///      ilnRegistry() returns address(this) and getRoute() exposes one immutable
+///      route. There is no owner, route admin, validator-set mirror or mutable
+///      fee state.
 contract ILNGateway {
-    bytes private constant CHECKPOINT_DOMAIN_V1 = "XGR_ILN_CHECKPOINT_V1";
+    uint64 public immutable sourceChainId;
+    uint32 public immutable sourceDomain;
+    uint32 public immutable destinationDomain;
 
-    IILNRouteRegistry public immutable ilnRegistry;
     address public immutable warpRouter;
     address public immutable warpToken;
-    bool public immutable nativeQuoteIncludesPrincipal;
     address public immutable mailbox;
     address public immutable merkleTreeHook;
-    IXGRInterchainValidatorSetV2 public immutable validatorSetMirror;
-    IXGRInterchainBLSVerifier public immutable verifier;
+    address public immutable destinationRouter;
+
+    uint256 public immutable validatorFeeWei;
+    bool public immutable nativeQuoteIncludesPrincipal;
     uint256 public immutable activationBlock;
 
-    struct Operation {
-        uint64 sourceChainId;
-        uint32 sourceDomain;
-        uint32 destinationDomain;
-        uint64 sourceBlockNumber;
-        address destinationRouter;
-        uint256 validatorFeeWei;
-        bool settled;
-    }
-
-    mapping(bytes32 => Operation) public operations;
-    mapping(address => uint256) public claimableWei;
+    uint256 public totalValidatorFeesEscrowedWei;
 
     uint256 private unlocked = 1;
 
@@ -73,13 +61,6 @@ contract ILNGateway {
     error UnsupportedWarpFee();
     error TokenTransferFailed();
     error InvalidMessageId();
-    error OperationAlreadyExists();
-    error UnknownOperation();
-    error AlreadySettled();
-    error InvalidAttestation();
-    error InsufficientQuorum();
-    error NothingToClaim();
-    error TransferFailed();
     error ReentrantCall();
 
     event ILNOperation(
@@ -87,13 +68,6 @@ contract ILNGateway {
         uint32 indexed destinationDomain,
         uint256 validatorFeeWei
     );
-    event ILNFeeSettled(
-        bytes32 indexed messageId,
-        uint64 indexed setId,
-        uint256 signerCount,
-        uint256 validatorFeeWei
-    );
-    event ILNFeeClaimed(address indexed validator, uint256 amountWei);
 
     modifier nonReentrant() {
         if (unlocked != 1) revert ReentrantCall();
@@ -103,128 +77,132 @@ contract ILNGateway {
     }
 
     constructor(
-        address registry_,
+        uint32 sourceDomain_,
+        uint32 destinationDomain_,
         address warpRouter_,
         address mailbox_,
         address merkleTreeHook_,
-        address validatorSetMirror_,
+        address destinationRouter_,
+        uint256 validatorFeeWei_,
         bool nativeQuoteIncludesPrincipal_
     ) {
         if (
-            registry_ == address(0) ||
+            block.chainid == 0 ||
+            block.chainid > type(uint64).max ||
+            sourceDomain_ == 0 ||
+            destinationDomain_ == 0 ||
+            sourceDomain_ == destinationDomain_ ||
             warpRouter_ == address(0) ||
             mailbox_ == address(0) ||
             merkleTreeHook_ == address(0) ||
-            validatorSetMirror_ == address(0)
+            destinationRouter_ == address(0) ||
+            validatorFeeWei_ == 0
         ) revert InvalidConfiguration();
 
         address token = IILNWarpRouter(warpRouter_).token();
-        if (
-            token != address(0) &&
-            token != warpRouter_
-        ) revert InvalidConfiguration();
+        if (token != address(0) && token != warpRouter_) {
+            revert InvalidConfiguration();
+        }
         if (token != address(0) && nativeQuoteIncludesPrincipal_) {
             revert InvalidConfiguration();
         }
 
-        IXGRInterchainValidatorSetV2 set =
-            IXGRInterchainValidatorSetV2(validatorSetMirror_);
-        address verifierAddress = set.verifier();
-        if (verifierAddress == address(0)) revert InvalidConfiguration();
-
-        ilnRegistry = IILNRouteRegistry(registry_);
+        sourceChainId = uint64(block.chainid);
+        sourceDomain = sourceDomain_;
+        destinationDomain = destinationDomain_;
         warpRouter = warpRouter_;
         warpToken = token;
-        nativeQuoteIncludesPrincipal = nativeQuoteIncludesPrincipal_;
         mailbox = mailbox_;
         merkleTreeHook = merkleTreeHook_;
-        validatorSetMirror = set;
-        verifier = IXGRInterchainBLSVerifier(verifierAddress);
+        destinationRouter = destinationRouter_;
+        validatorFeeWei = validatorFeeWei_;
+        nativeQuoteIncludesPrincipal = nativeQuoteIncludesPrincipal_;
         activationBlock = block.number;
     }
 
+    /// @notice xgr-node gateway-binding getter.
+    /// @dev The immutable MVP gateway is its own canonical registry.
+    function ilnRegistry() external view returns (address) {
+        return address(this);
+    }
+
+    /// @notice Canonical xgr-node v3.1.2 route ABI.
+    function getRoute(uint32 requestedDestinationDomain)
+        external
+        view
+        returns (
+            uint64 routeSourceChainId,
+            uint32 routeSourceDomain,
+            address gateway,
+            address sourceRouter,
+            address routeMailbox,
+            address routeMerkleTreeHook,
+            address routeDestinationRouter,
+            uint256 routeValidatorFeeWei,
+            bool enabled
+        )
+    {
+        if (requestedDestinationDomain != destinationDomain) {
+            revert InvalidRoute();
+        }
+
+        return (
+            sourceChainId,
+            sourceDomain,
+            address(this),
+            warpRouter,
+            mailbox,
+            merkleTreeHook,
+            destinationRouter,
+            validatorFeeWei,
+            true
+        );
+    }
+
     function quoteILN(
-        uint32 destinationDomain,
+        uint32 requestedDestinationDomain,
         bytes32 recipient,
         uint256 amount
     )
         external
         view
         returns (
-            uint256 validatorFeeWei,
-            uint256 routerNativeFeeWei,
-            uint256 totalNativeValueWei
+            uint256 routeValidatorFeeWei,
+            uint256 routerNativeValueWei,
+            uint256 totalNativeValueWei,
+            uint256 totalTokenAmount
         )
     {
-        if (amount == 0 || recipient == bytes32(0)) revert InvalidAmount();
+        if (requestedDestinationDomain != destinationDomain) {
+            revert InvalidRoute();
+        }
+        if (amount == 0 || recipient == bytes32(0)) {
+            revert InvalidAmount();
+        }
 
-        (
-            ,
-            ,
-            address routeGateway,
-            address routeSourceRouter,
-            address routeMailbox,
-            address routeHook,
-            address destinationRouter,
-            uint256 routeValidatorFee,
-            bool enabled
-        ) = ilnRegistry.getRoute(destinationDomain);
-
-        _validateRoute(
-            routeGateway,
-            routeSourceRouter,
-            routeMailbox,
-            routeHook,
-            destinationRouter,
-            routeValidatorFee,
-            enabled
-        );
-
-        routerNativeFeeWei = _quoteRouterNative(
-            destinationDomain,
-            recipient,
-            amount
-        );
-        validatorFeeWei = routeValidatorFee;
-        totalNativeValueWei = routeValidatorFee + routerNativeFeeWei;
+        routerNativeValueWei = _quoteRouterNative(recipient, amount);
+        routeValidatorFeeWei = validatorFeeWei;
+        totalNativeValueWei = validatorFeeWei + routerNativeValueWei;
+        totalTokenAmount = warpToken == address(0) ? 0 : amount;
     }
 
     function bridge(
-        uint32 destinationDomain,
+        uint32 requestedDestinationDomain,
         bytes32 recipient,
         uint256 amount
     ) external payable nonReentrant returns (bytes32 messageId) {
-        if (amount == 0 || recipient == bytes32(0)) revert InvalidAmount();
+        if (requestedDestinationDomain != destinationDomain) {
+            revert InvalidRoute();
+        }
+        if (amount == 0 || recipient == bytes32(0)) {
+            revert InvalidAmount();
+        }
 
-        (
-            uint64 sourceChainId,
-            uint32 sourceDomain,
-            address routeGateway,
-            address routeSourceRouter,
-            address routeMailbox,
-            address routeHook,
-            address destinationRouter,
-            uint256 validatorFeeWei,
-            bool enabled
-        ) = ilnRegistry.getRoute(destinationDomain);
+        uint256 routerNativeValueWei =
+            _quoteRouterNative(recipient, amount);
+        uint256 expectedValue =
+            validatorFeeWei + routerNativeValueWei;
 
-        _validateRoute(
-            routeGateway,
-            routeSourceRouter,
-            routeMailbox,
-            routeHook,
-            destinationRouter,
-            validatorFeeWei,
-            enabled
-        );
-        if (
-            sourceChainId != uint64(block.chainid) ||
-            sourceDomain == 0
-        ) revert InvalidRoute();
-
-        uint256 routerNativeFeeWei =
-            _quoteRouterNative(destinationDomain, recipient, amount);
-        uint256 expectedValue = validatorFeeWei + routerNativeFeeWei;
         if (msg.value != expectedValue) {
             revert InvalidValue(expectedValue, msg.value);
         }
@@ -240,24 +218,12 @@ contract ILNGateway {
         }
 
         messageId = IILNWarpRouter(warpRouter).transferRemote{
-            value: routerNativeFeeWei
+            value: routerNativeValueWei
         }(destinationDomain, recipient, amount);
 
         if (messageId == bytes32(0)) revert InvalidMessageId();
-        if (operations[messageId].sourceBlockNumber != 0) {
-            revert OperationAlreadyExists();
-        }
-        if (block.number > type(uint64).max) revert InvalidConfiguration();
 
-        operations[messageId] = Operation({
-            sourceChainId: sourceChainId,
-            sourceDomain: sourceDomain,
-            destinationDomain: destinationDomain,
-            sourceBlockNumber: uint64(block.number),
-            destinationRouter: destinationRouter,
-            validatorFeeWei: validatorFeeWei,
-            settled: false
-        });
+        totalValidatorFeesEscrowedWei += validatorFeeWei;
 
         emit ILNOperation(
             messageId,
@@ -266,162 +232,10 @@ contract ILNGateway {
         );
     }
 
-    function settle(
-        bytes32 messageId,
-        uint64 setId,
-        bytes32 root,
-        uint32 checkpointIndex,
-        bytes calldata signerBitmap,
-        bytes calldata aggregateSignature
-    ) external nonReentrant {
-        Operation storage operation = operations[messageId];
-        if (operation.sourceBlockNumber == 0) revert UnknownOperation();
-        if (operation.settled) revert AlreadySettled();
-        if (setId == 0 || root == bytes32(0)) revert InvalidAttestation();
-
-        (
-            address[] memory validators,
-            bytes[] memory publicKeys,
-            uint64 resolvedSetId
-        ) = validatorSetMirror.getValidatorSetForVerification(setId);
-
-        if (
-            resolvedSetId != setId ||
-            validators.length == 0 ||
-            validators.length != publicKeys.length
-        ) revert InvalidAttestation();
-
-        uint256 threshold = (2 * validators.length + 2) / 3;
-        uint256 signerCount =
-            _bitmapSignerCount(signerBitmap, validators.length);
-        if (signerCount < threshold) revert InsufficientQuorum();
-
-        bytes memory payload = _encodeCheckpointPayload(
-            operation,
-            messageId,
-            setId,
-            root,
-            checkpointIndex
-        );
-
-        if (
-            !verifier.verify(
-                payload,
-                publicKeys,
-                signerBitmap,
-                aggregateSignature
-            )
-        ) revert InsufficientQuorum();
-
-        operation.settled = true;
-
-        uint256 share = operation.validatorFeeWei / signerCount;
-        uint256 remainder = operation.validatorFeeWei % signerCount;
-        bool remainderAssigned;
-
-        for (uint256 i = 0; i < validators.length; i++) {
-            if (!_bitmapContains(signerBitmap, i)) continue;
-            uint256 amount = share;
-            if (!remainderAssigned) {
-                amount += remainder;
-                remainderAssigned = true;
-            }
-            if (amount != 0) {
-                claimableWei[validators[i]] += amount;
-            }
-        }
-
-        emit ILNFeeSettled(
-            messageId,
-            setId,
-            signerCount,
-            operation.validatorFeeWei
-        );
-    }
-
-    function claim() external nonReentrant {
-        uint256 amount = claimableWei[msg.sender];
-        if (amount == 0) revert NothingToClaim();
-
-        claimableWei[msg.sender] = 0;
-        (bool ok,) = payable(msg.sender).call{value: amount}("");
-        if (!ok) {
-            claimableWei[msg.sender] = amount;
-            revert TransferFailed();
-        }
-
-        emit ILNFeeClaimed(msg.sender, amount);
-    }
-
-    function encodeCheckpointPayload(
-        bytes32 messageId,
-        uint64 setId,
-        bytes32 root,
-        uint32 checkpointIndex
-    ) external view returns (bytes memory) {
-        Operation storage operation = operations[messageId];
-        if (operation.sourceBlockNumber == 0) revert UnknownOperation();
-        return _encodeCheckpointPayload(
-            operation,
-            messageId,
-            setId,
-            root,
-            checkpointIndex
-        );
-    }
-
-    function _encodeCheckpointPayload(
-        Operation storage operation,
-        bytes32 messageId,
-        uint64 setId,
-        bytes32 root,
-        uint32 checkpointIndex
-    ) private view returns (bytes memory) {
-        return abi.encodePacked(
-            CHECKPOINT_DOMAIN_V1,
-            bytes8(operation.sourceChainId),
-            bytes4(operation.sourceDomain),
-            bytes4(operation.destinationDomain),
-            bytes8(setId),
-            bytes8(operation.sourceBlockNumber),
-            bytes20(address(ilnRegistry)),
-            bytes20(address(this)),
-            bytes20(warpRouter),
-            bytes20(mailbox),
-            bytes20(merkleTreeHook),
-            bytes20(operation.destinationRouter),
-            bytes32(operation.validatorFeeWei),
-            messageId,
-            root,
-            bytes4(checkpointIndex)
-        );
-    }
-
-    function _validateRoute(
-        address routeGateway,
-        address routeSourceRouter,
-        address routeMailbox,
-        address routeHook,
-        address destinationRouter,
-        uint256 validatorFeeWei,
-        bool enabled
-    ) private view {
-        if (
-            !enabled ||
-            routeGateway != address(this) ||
-            routeSourceRouter != warpRouter ||
-            routeMailbox != mailbox ||
-            routeHook != merkleTreeHook ||
-            destinationRouter == address(0) ||
-            validatorFeeWei == 0
-        ) revert InvalidRoute();
-    }
-
     function _quoteRouterNative(
-        uint32 destinationDomain,
         bytes32 recipient,
         uint256 amount
-    ) private view returns (uint256 nativeFeeWei) {
+    ) private view returns (uint256 nativeValueWei) {
         ILNQuote[] memory quotes =
             IILNWarpRouter(warpRouter).quoteTransferRemote(
                 destinationDomain,
@@ -429,15 +243,15 @@ contract ILNGateway {
                 amount
             );
 
-        uint256 tokenQuoted;
+        uint256 tokenQuote;
         for (uint256 i = 0; i < quotes.length; i++) {
             if (quotes[i].token == address(0)) {
-                nativeFeeWei += quotes[i].amount;
+                nativeValueWei += quotes[i].amount;
             } else if (
                 warpToken != address(0) &&
                 quotes[i].token == warpToken
             ) {
-                tokenQuoted += quotes[i].amount;
+                tokenQuote += quotes[i].amount;
             } else {
                 revert UnsupportedWarpFee();
             }
@@ -445,50 +259,16 @@ contract ILNGateway {
 
         if (warpToken == address(0)) {
             if (!nativeQuoteIncludesPrincipal) {
-                nativeFeeWei += amount;
+                nativeValueWei += amount;
             }
-            return nativeFeeWei;
+            return nativeValueWei;
         }
 
-        // The currently deployed synthetic route has no token-denominated
-        // protocol fee. Accept either no token quote or an exact principal echo,
-        // but fail closed on any extra token charge.
-        if (tokenQuoted != 0 && tokenQuoted != amount) {
+        // Supported synthetic-router variants either omit the token quote or
+        // echo the exact bridged principal. Any different token-denominated
+        // charge is deliberately unsupported by the Base MVP.
+        if (tokenQuote != 0 && tokenQuote != amount) {
             revert UnsupportedWarpFee();
         }
-    }
-
-    function _bitmapSignerCount(
-        bytes calldata bitmap,
-        uint256 validatorCount
-    ) private pure returns (uint256 count) {
-        if (validatorCount == 0 || bitmap.length == 0) {
-            revert InvalidAttestation();
-        }
-        uint256 maxBitmapLength = (validatorCount + 7) / 8;
-        if (bitmap.length > maxBitmapLength || bitmap[0] == bytes1(0)) {
-            revert InvalidAttestation();
-        }
-
-        for (uint256 i = 0; i < validatorCount; i++) {
-            if (_bitmapContains(bitmap, i)) count++;
-        }
-
-        for (uint256 i = validatorCount; i < bitmap.length * 8; i++) {
-            if (_bitmapContains(bitmap, i)) revert InvalidAttestation();
-        }
-    }
-
-    function _bitmapContains(
-        bytes calldata bitmap,
-        uint256 index
-    ) private pure returns (bool) {
-        uint256 byteFromEnd = index >> 3;
-        if (byteFromEnd >= bitmap.length) return false;
-        uint256 bitIndex = index & 7;
-        return (
-            uint8(bitmap[bitmap.length - 1 - byteFromEnd]) &
-            uint8(1 << bitIndex)
-        ) != 0;
     }
 }

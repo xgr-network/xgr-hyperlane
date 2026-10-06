@@ -8,9 +8,9 @@
 
 ## 1. MVP boundary
 
-The first ILN deployment is intentionally limited to one external spoke:
+The first ILN deployment is intentionally one external spoke:
 
-```text
+~~~text
 Base
 USDC <-> wXGR
           |
@@ -18,328 +18,289 @@ USDC <-> wXGR
           v
 XGRChain
 native XGR
-```
+~~~
 
 Both bridge directions are required:
 
-```text
+~~~text
 XGRChain -> Base
 native XGR -> wXGR
 
 Base -> XGRChain
 wXGR -> native XGR
-```
+~~~
 
-No XDC, Polygon, Arbitrum, additional DEX integration, or generic
-cross-chain asset routing belongs to this MVP.
+The existing Warp routers, Mailboxes, MerkleTreeHooks and Interchain
+validator registries are retained.
 
-The Base USDC/wXGR pool is an ordinary DEX pool. It is not implemented by
+The Base USDC/wXGR pool is an ordinary DEX pool and is not implemented by
 the ILN contracts.
 
-Initial liquidity may be small (approximately 500 USDC on the USDC side).
-The purpose of this stage is therefore technical and market validation, not
-high-capacity execution.
+The initial pool may be small, approximately 500 USDC on the USDC side.
+This stage proves the route and early market demand; it is not a
+high-capacity liquidity product.
 
-## 2. Launch fee
+## 2. What changes from v3.1.1
 
-xgr-node v3.1.2 deliberately rejects a zero validator fee.
+The BLS quorum itself is not replaced.
 
-The launch fee should therefore be economically negligible but strictly
-positive. With the initial three-validator set, **6 wei** is a useful launch
-value because it is divisible by both a two-signer quorum and a three-signer
-quorum.
+v3.1.1 authorized a complete Hyperlane checkpoint root. v3.1.2 narrows the
+authorization to one fee-qualified canonical message:
 
-This is not a permanent pricing commitment. FEE_UPDATE remains quorum
-governed.
+~~~text
+canonical Gateway
+      +
+exact Hyperlane messageId
+      +
+exact source block
+      +
+canonical route context
+      +
+Merkle inclusion in signed root
+      +
+existing XGR validator BLS quorum
+~~~
 
-## 3. Base-spoke contract map
+The existing Warp router remains the Hyperlane message sender.
+
+## 3. Minimal Base-MVP architecture
+
+The Base MVP does not deploy validator-set mirrors or a mutable
+quorum-governed ILN route registry.
+
+Instead, each source chain gets one immutable ILNGateway.
+
+The Gateway also implements the exact getRoute(uint32) ABI expected by
+xgr-node v3.1.2 and returns itself as the canonical gateway.
+
+Therefore:
+
+~~~text
+ILN_REGISTRY_ADDR == ILN_GATEWAY
+~~~
+
+All route-critical values are constructor immutables:
+
+- source domain,
+- destination domain,
+- source Warp router,
+- Mailbox,
+- MerkleTreeHook,
+- destination Warp router,
+- launch validator fee.
+
+There is no owner, admin key, route mutation, fee mutation,
+validator-set mirror, or cross-chain governance dependency.
+
+Changing a route later means deploying a new Gateway and explicitly
+changing node/bootstrap and destination-security configuration.
+
+For the small Base MVP this is simpler and safer than introducing dynamic
+cross-chain governance before it is needed.
+
+## 4. Existing security contracts retained
+
+### Base destination: XGR -> Base
+
+The existing Base production validator registry remains canonical:
+
+0x70F5752326735b31641f21D174BA035E904Db93c
+
+The new XGRILNInterchainISM uses that existing V1 registry and its
+EIP-2537 BLS verifier.
+
+This preserves the same validator-set semantics already used by the
+v3.1.1 XGR -> Base route while adding message-specific v3.1.2
+authorization.
+
+Because the V1 registry exposes only the current validator set, an
+attestation created immediately before a membership change must be
+delivered before that set changes or be re-created under the new set.
+This is a liveness limitation inherited from the existing V1 Base
+registry, not a new authorization weakness.
+
+### XGR destination: Base -> XGR
+
+The existing XGR RegistryV2 remains canonical:
+
+0x013F2F2f7dB897F941b19C4ab71C5395a48A0292
+
+XGRILNInterchainISMV2 uses its historical validator-set support and the
+native compressed BLS verifier.
+
+No new validator registry is required on either chain for the Base MVP.
+
+## 5. Launch validator fee
+
+xgr-node v3.1.2 intentionally rejects a zero validator fee.
+
+For the first Base MVP deployment the recommended value is:
+
+~~~text
+1 wei
+~~~
+
+This is economically equivalent to zero for users while preserving the
+strict positive-fee invariant.
+
+The static Gateway escrows this nominal fee. The Base MVP deliberately
+does not add a second cross-chain validator-set synchronization mechanism
+just to distribute 1 wei.
+
+Before a materially non-zero validator fee is introduced, signer-based
+fee settlement must be added as a separately reviewed upgrade.
+
+## 6. New contracts
 
 ### Base
 
-Existing contracts retained:
+Only two new ILN contracts are required:
 
-- Mailbox: `0xeA87ae93Fa0019a82A727bfd3eBd1cFCa8f64f1D`
-- MerkleTreeHook: `0x19dc38aeae620380430C200a6E990D5Af5480117`
-- BLS verifier: `0x202C10bDeCf3B796EA4B4025C81952C4F2DD9f93`
-- synthetic wXGR Warp router/token:
-  `0x3b83687d77170D42feDDFe221629cc21e771e021`
+1. ILNGateway
+   - Base -> XGR source Gateway;
+   - also acts as the immutable Base ILN registry.
 
-New deployment:
+2. XGRILNInterchainISM
+   - XGR -> Base destination verifier;
+   - uses the existing Base V1 validator registry.
 
-1. Base-destination `XGRInterchainValidatorRegistryV2`
-   - destinationDomain = 8453
-   - verifier format = EIP-2537
-   - used by the Base destination ILN ISM.
-2. XGR-destination RegistryV2 mirror
-   - destinationDomain = 1643
-   - verifier format = EIP-2537
-   - used by the Base source ILN registry/gateway for governance and fee
-     settlement.
-3. `ILNRouteRegistry`
-   - sourceDomain = 8453
-   - governed only by the XGR-destination mirror.
-4. `ILNGateway`
-   - wraps the existing Base synthetic wXGR Warp router.
-5. `XGRILNInterchainISMV2`
-   - verifies message-specific XGR-origin ILN attestations on Base.
+Existing Base Mailbox, MerkleTreeHook, wXGR Warp router/token, BLS verifier
+and validator registry remain unchanged.
 
 ### XGRChain
 
-Existing contracts retained:
+Only two new ILN security components are required:
 
-- Mailbox: `0x5632409bc2f0e8bAc4AaF43654D4FFc7822C9c79`
-- MerkleTreeHook: `0xeD98Af715b5a72dCD412567eb086d48225CDDACF`
-- native XGR Warp router:
-  `0x202C10bDeCf3B796EA4B4025C81952C4F2DD9f93`
-- XGR-destination RegistryV2:
-  `0x013F2F2f7dB897F941b19C4ab71C5395a48A0292`
-- native compressed BLS verifier: `0x0000000000000000000000000000000000002040`
-- PausableISM: `0x1175F84765CFeA514ea1fd75162CFE8a6C64d4CA`
+1. ILNGateway
+   - XGR -> Base source Gateway;
+   - also acts as the immutable XGR ILN registry.
 
-New deployment:
+2. XGRILNInterchainISMV2
+   - Base -> XGR destination verifier;
+   - uses the existing XGR RegistryV2.
 
-1. Base-destination RegistryV2 mirror
-   - destinationDomain = 8453
-   - verifier format = compressed
-   - used by the XGR source ILN registry/gateway.
-2. `ILNRouteRegistry`
-   - sourceDomain = 1643
-   - governed only by the Base-destination mirror.
-3. `ILNGateway`
-   - wraps the existing native XGR Warp router.
-4. `XGRILNInterchainISMV2`
-   - verifies message-specific Base-origin ILN attestations.
-5. fresh 2-of-2 StaticAggregationISM
-   - existing PausableISM
-   - new XGRILNInterchainISMV2.
+The existing PausableISM is composed with the new ILN ISM in a fresh
+2-of-2 StaticAggregationISM.
 
-## 4. Validator-set mirrors
+No existing Warp router is replaced.
 
-ILN governance is destination-set governed.
+## 7. Deployment sequence
 
-Therefore a source chain must be able to verify the validator set that
-secures its destination.
+### Phase A - node software
 
-For the Base spoke this produces two mirrored pairs:
-
-```text
-destination XGR set
-  canonical: XGRChain
-  mirror:    Base
-
-destination Base set
-  canonical: Base
-  mirror:    XGRChain
-```
-
-A membership transition has the same signed payload on both copies because
-the payload binds:
-
-- originChainId = 1643
-- destinationDomain
-- expectedSetId
-- validity
-- action
-- validator identity
-- BLS public keys.
-
-The transaction sender and attached reserve are not part of the signed
-membership payload, so execution remains permissionless and each chain may
-use its locally appropriate reserve amount.
-
-A mirror must never be treated as an independent membership authority.
-
-## 5. Bootstrap proofs
-
-The deployment scripts intentionally do not invent or embed missing
-possession proofs.
-
-Required inputs are supplied through environment variables.
-
-For the Base-destination RegistryV2 (destination 8453):
-
-- `BASE_DESTINATION_BOOTSTRAP_PROOF_0`
-- `BASE_DESTINATION_BOOTSTRAP_PROOF_1`
-- `BASE_DESTINATION_BOOTSTRAP_PROOF_2`
-
-These are EIP-2537 signatures.
-
-For the XGR-destination mirror on Base (destination 1643):
-
-- `XGR_DESTINATION_MIRROR_BOOTSTRAP_PROOF_0`
-- `XGR_DESTINATION_MIRROR_BOOTSTRAP_PROOF_1`
-- `XGR_DESTINATION_MIRROR_BOOTSTRAP_PROOF_2`
-
-These are EIP-2537 signatures. Existing compressed destination-1643
-bootstrap signatures may be converted to EIP-2537 representation without
-re-signing.
-
-For the Base-destination mirror on XGRChain:
-
-- `BASE_DESTINATION_MIRROR_BOOTSTRAP_PROOF_0`
-- `BASE_DESTINATION_MIRROR_BOOTSTRAP_PROOF_1`
-- `BASE_DESTINATION_MIRROR_BOOTSTRAP_PROOF_2`
-
-These are compressed BLS signatures.
-
-## 6. Safe deployment sequence
-
-### Phase A - software
-
-1. Build and publish xgr-node v3.1.2.
+1. Complete and release xgr-node v3.1.2.
 2. Upgrade all Interchain validators.
-3. Do not configure any ILN route yet.
-4. Existing chain block production must remain unaffected.
+3. Do not configure the two ILN routes yet.
 
-### Phase B - passive contract deployment
+Chain consensus remains independent of the ILN worker.
 
-Run the contracts in `script/DeployILNBaseSpoke.s.sol`.
+### Phase B - passive contracts
 
 Deploy:
 
-1. Base destination RegistryV2.
-2. XGR-destination mirror on Base.
-3. Base-destination mirror on XGRChain.
-4. Base source ILN registry + Gateway.
-5. XGR source ILN registry + Gateway.
-6. Base destination ILN ISM.
-7. XGR destination ILN ISM + fresh Pausable/ILN aggregation.
+1. Base source ILNGateway.
+2. XGR source ILNGateway.
+3. Base destination XGRILNInterchainISM.
+4. XGR destination XGRILNInterchainISMV2.
+5. Fresh XGR PausableISM + ILN-ISM 2-of-2 aggregation.
 
-At the end of this phase **nothing is active**.
+script/DeployILNBaseSpoke.s.sol performs only deployment. It does not:
 
-The scripts do not:
+- modify the Base wXGR router,
+- modify XGR DomainRoutingISM,
+- start relayers,
+- alter the existing validator registries.
 
-- execute ROUTE_ADD,
-- call DomainRoutingISM.set,
-- change the Base wXGR router ISM,
-- start ILN relayers.
+### Phase C - node configuration
 
-### Phase C - node bootstrap config
+Set:
 
-Configure the network-level values from
-`runtime/xgr-node-interchain-mainnet.env.example`:
+~~~text
+XGR_INTERCHAIN_BASE_ILN_REGISTRY_ADDR=<BASE_ILN_GATEWAY>
+XGR_INTERCHAIN_XGR_ILN_REGISTRY_ADDR=<XGR_ILN_GATEWAY>
+~~~
 
-- Base RegistryV2
-- Base ILN registry
-- XGR existing RegistryV2
-- XGR ILN registry
-- RPC/domain/confirmation policies.
+Then declare the two explicit routes.
 
-Do not add route ENV declarations until destination security is ready if an
-operator wants a fully inert worker.
-
-### Phase D - quorum-governed route records
-
-Create two ROUTE_ADD proposals through xgr-node v3.1.2:
-
-```text
-base -> xgr
-xgr  -> base
-```
-
-Use a launch `validatorFeeWei` such as 6 wei.
-
-Validators inspect and explicitly approve each proposal.
-
-After two-thirds quorum, execute each proposal on its source-chain
-`ILNRouteRegistry`.
-
-There is no owner/admin bypass.
-
-### Phase E - destination security cutover
+### Phase D - destination-security cutover
 
 Base:
 
-- configure the existing Base wXGR router to use the new Base destination
-  `XGRILNInterchainISMV2`.
+- change the existing Base wXGR router's ISM to the new
+  XGRILNInterchainISM.
 
 XGRChain:
 
-- update the Base origin entry in the existing DomainRoutingISM to the fresh
-  2-of-2 aggregation:
-  - PausableISM
-  - XGRILNInterchainISMV2.
+- change the Base-origin DomainRoutingISM entry to the fresh
+  PausableISM + XGRILNInterchainISMV2 aggregation.
 
-These are the first steps that change message acceptance.
+These are the first state changes that alter message acceptance.
 
-They must be performed only after all validators run v3.1.2 and the route
-records have been verified.
+### Phase E - observe-only relayers
 
-### Phase F - observe-only ILN relayers
+Use:
 
-Create local non-tracked env files from:
-
-- `runtime/.env.relayer.iln.base-to-xgr.example`
-- `runtime/.env.relayer.iln.xgr-to-base.example`
+- runtime/.env.relayer.iln.base-to-xgr.example
+- runtime/.env.relayer.iln.xgr-to-base.example
 
 Keep:
 
-```text
+~~~text
 RELAYER_SUBMIT=false
-```
+~~~
 
-Start explicitly:
+Start each ILN relayer explicitly. The all target intentionally does not
+start ILN relayers.
 
-```bash
-./manage-relayers.sh start iln-base-to-xgr
-./manage-relayers.sh start iln-xgr-to-base
-```
+The relayer must pass Mailbox.process.staticCall before a route is
+considered ready.
 
-The ILN relayer calls the exact destination `Mailbox.process` path with
-`staticCall` before reporting readiness.
+### Phase F - controlled E2E
 
-The generic `all` target intentionally does not start ILN relayers.
+Test tiny amounts in both directions and require:
 
-### Phase G - controlled E2E
-
-Test tiny amounts in both directions.
-
-Required evidence:
-
-- canonical Gateway `ILNOperation`,
-- exact messageId,
-- completed v3.1.2 attestation by messageId,
-- correct Merkle proof,
-- destination static validation,
+- Gateway ILNOperation from the exact source Gateway,
+- exact messageId attestation,
+- expected source block and 1-wei fee,
+- correct Merkle inclusion proof,
+- successful destination static validation,
 - successful destination processing,
-- expected wXGR burn/mint and XGR lock/unlock.
+- correct XGR lock/unlock and wXGR mint/burn.
 
-Only after both directions pass should `RELAYER_SUBMIT=true` be considered
-for continuous operation.
+Only after both directions pass should continuous submission be enabled.
 
-### Phase H - Base pool
+### Phase G - Base pool
 
-Seed the Base USDC/wXGR pool with the intentionally small initial liquidity.
+Seed the small Base USDC/wXGR pool.
 
-The UI must quote live output and slippage. It must not advertise a fixed
-maximum transaction size merely because the bridge itself can move a larger
-amount.
+The UI must display live AMM output/slippage and must not imply that bridge
+capacity equals useful trade size.
 
-## 7. Security boundaries
+## 8. Why this remains extensible
 
-The MVP keeps these invariants:
+The simplification is MVP-specific, not Base-hardcoded.
 
-- The existing Warp routers remain the Hyperlane message senders.
-- Direct Warp calls do not generate a canonical `ILNOperation`.
-- Validators authorize one exact messageId, not an entire Merkle root.
-- A destination ISM verifies both the authorized messageId and Merkle
-  inclusion.
-- Route changes require destination-validator BLS quorum.
-- Relayers remain replaceable and non-authoritative.
-- Validator fee settlement uses the accepted signer bitmap.
-- ILN failure cannot stop XGRChain IBFT block production.
+ILNGateway is configured by constructor with source/destination domains,
+routers, Mailbox and hook.
 
-## 8. Deferred scope
+A future XDC spoke can therefore deploy another Gateway instance and the
+appropriate destination ISM without changing the Base contracts.
 
-Not part of this MVP:
+If ILN later needs non-trivial validator fees, mutable route parameters,
+many destinations per source Gateway, or fully quorum-governed route
+updates, those can be introduced as a later registry/gateway generation
+without changing the v3.1.2 message-specific authorization model.
 
-- XDC integration,
-- Polygon / Arbitrum spokes,
-- additional external liquidity pools,
-- automatic cross-chain swap orchestration,
+## 9. Deferred scope
+
+Not part of this Base MVP:
+
+- XDC,
+- Polygon / Arbitrum,
+- validator-set mirrors,
+- dynamic route governance,
+- signer-based fee distribution for the nominal 1-wei launch fee,
 - large-transfer liquidity targets,
-- percentage protocol fees,
-- a separate ILN token.
+- automatic cross-chain swap orchestration.
 
-The next expansion decision should follow actual Base-spoke usage and
-liquidity evidence.
+The next expansion decision should follow actual Base-spoke usage.

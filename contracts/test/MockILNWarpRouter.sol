@@ -10,6 +10,7 @@ contract MockILNWarpRouter is IILNWarpRouter {
 
     uint256 public totalSupply;
     uint256 public nativeFeeWei = 0.01 ether;
+    uint256 public syntheticQuoteAmount;
     uint256 public nonce;
 
     mapping(address => uint256) public balanceOf;
@@ -17,6 +18,10 @@ contract MockILNWarpRouter is IILNWarpRouter {
 
     function token() external view override returns (address) {
         return address(this);
+    }
+
+    function setSyntheticQuoteAmount(uint256 value) external {
+        syntheticQuoteAmount = value;
     }
 
     function mint(address account, uint256 amount) external {
@@ -40,9 +45,11 @@ contract MockILNWarpRouter is IILNWarpRouter {
         uint256 allowed = allowance[from][msg.sender];
         require(allowed >= amount, "allowance");
         require(balanceOf[from] >= amount, "balance");
+
         if (allowed != type(uint256).max) {
             allowance[from][msg.sender] = allowed - amount;
         }
+
         balanceOf[from] -= amount;
         balanceOf[to] += amount;
         return true;
@@ -51,20 +58,16 @@ contract MockILNWarpRouter is IILNWarpRouter {
     function quoteTransferRemote(
         uint32,
         bytes32,
-        uint256 amount
+        uint256
     ) external view override returns (ILNQuote[] memory quotes) {
-        quotes = new ILNQuote[](3);
+        quotes = new ILNQuote[](2);
         quotes[0] = ILNQuote({
             token: address(0),
             amount: nativeFeeWei
         });
         quotes[1] = ILNQuote({
             token: address(this),
-            amount: amount
-        });
-        quotes[2] = ILNQuote({
-            token: address(this),
-            amount: 0
+            amount: syntheticQuoteAmount
         });
     }
 
