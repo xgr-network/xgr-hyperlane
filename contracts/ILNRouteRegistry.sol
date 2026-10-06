@@ -45,6 +45,7 @@ contract ILNRouteRegistry is IILNRouteRegistry {
     uint32 public immutable sourceDomain;
     IXGRInterchainValidatorSetV2 public immutable validatorSet;
     IXGRInterchainBLSVerifier public immutable verifier;
+    uint32 public immutable governedDestinationDomain;
 
     uint64 public nextNonce = 1;
 
@@ -83,6 +84,7 @@ contract ILNRouteRegistry is IILNRouteRegistry {
         sourceDomain = sourceDomain_;
         validatorSet = set;
         verifier = IXGRInterchainBLSVerifier(verifierAddress);
+        governedDestinationDomain = set.destinationDomain();
     }
 
     function getRoute(uint32 destinationDomain)
@@ -120,7 +122,11 @@ contract ILNRouteRegistry is IILNRouteRegistry {
         bytes calldata signerBitmap,
         bytes calldata aggregateSignature
     ) external {
-        if (proposal.destinationDomain == 0 || proposal.setId == 0) {
+        if (
+            proposal.destinationDomain == 0 ||
+            proposal.destinationDomain != governedDestinationDomain ||
+            proposal.setId == 0
+        ) {
             revert InvalidProposal();
         }
         if (proposal.nonce != nextNonce) {
