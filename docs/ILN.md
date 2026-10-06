@@ -608,29 +608,59 @@ on-chain ILN registry = protocol truth
 
 A validator operator changing a local environment variable must not be able to redefine a valid ILN route.
 
-### 12.2 v3.1.2 source-network cutover
-
-The presence of a network-scoped ILN registry address is an explicit v3.1.2 cutover for that **source network**.
-
-For example:
+In v3.1.2, the local route declaration only binds configured network names:
 
 ~~~text
-XGR_INTERCHAIN_BASE_ILN_REGISTRY_ADDR=0x...
+XGR_INTERCHAIN_ROUTE_BASE_TO_XGR_SOURCE_NETWORK=base
+XGR_INTERCHAIN_ROUTE_BASE_TO_XGR_DESTINATION=xgr
 ~~~
 
-means that Base-origin traffic must no longer use the generic v3.1.1 checkpoint-signing path.
+Legacy route-local source fields such as `SOURCE_MAILBOX_ADDR`, `SOURCE_MERKLE_TREE_HOOK_ADDR`, `SOURCE_CHAIN_ID` and `SOURCE_TYPE` are not accepted by the v3.1.2 route loader. The canonical contract addresses come from the source network ILN registry.
 
-The worker must therefore:
+### 12.2 v3.1.2 source-network cutover
 
-- stop producing legacy checkpoint signatures for Base-origin routes;
-- reject legacy checkpoint votes received from peers for Base-origin routes;
-- never silently fall back to v3.1.1 signing while the Base ILN registry pointer is configured.
+v3.1.2 is a breaking Interchain security cutover rather than a compatibility mode.
 
-The same rule applies independently to XGRChain, XDC and future source networks.
+The generic v3.1.1 checkpoint signer is removed from the runtime. Legacy `checkpoint_vote` gossip is rejected and the v3.1.2 Interchain network uses the separate P2P topic:
 
-This rule is source-scoped. Configuring the XGRChain ILN registry must not by itself disable a Base-origin route, and vice versa.
+~~~text
+/xgr/interchain/2.0.0
+~~~
 
-During rollout, all Interchain validators should move a source network to ILN mode together. A mixed validator population can otherwise leave legacy signing active on nodes that have not yet configured the source-network ILN registry.
+There is no implicit route fallback. If no explicit ILN routes are configured, checkpoint signing is idle.
+
+For an active v3.1.2 route, validators read the source route from the configured source-network ILN registry and sign the domain-separated payload:
+
+~~~text
+XGR_ILN_CHECKPOINT_V1
+~~~
+
+The payload binds the exact confirmed source block, source registry, Gateway, Mailbox, dedicated ILN MerkleTreeHook, destination router, validator fee, destination validator-set ID, checkpoint root and index.
+
+Every receiving validator independently re-verifies that exact source block before accepting the vote.
+
+The dedicated ILN hook is part of the authorization boundary and must expose:
+
+~~~text
+mailbox()
+authorizedSender()
+count()
+root()
+~~~
+
+with `authorizedSender() == canonical ILNGateway`.
+
+The canonical Gateway must expose:
+
+~~~text
+ilnRegistry()
+mailbox()
+merkleTreeHook()
+~~~
+
+and those values must match the source registry route. This prevents an unrelated Mailbox user from entering the ILN-attested checkpoint tree.
+
+All Interchain validators must be upgraded to v3.1.2 before ILN activation. The node can be rolled out first with no active ILN routes; ILN contracts can be deployed and configured afterward.
 
 ---
 
@@ -961,10 +991,10 @@ with:
 | ILNGateway / FeeVault | Planned |
 | Native source-chain validator fee | Planned |
 | Equal-share signer settlement + claim() | Design fixed / implementation planned |
-| 2/3 BLS proposal governance | Design fixed / implementation planned |
-| On-chain canonical ILN route registry | Design fixed / implementation planned |
+| 2/3 BLS proposal governance | Node implementation complete on PoS_3; on-chain executor contract pending |
+| On-chain canonical ILN route registry | Node reader/interface fixed; contract deployment pending |
 | ILN application / route authorization | Planned |
-| xgr-node v3.1.2 ILN eligibility | Planned |
+| xgr-node v3.1.2 ILN eligibility | Implemented on PoS_3; build/test validation pending |
 | XGRChain ↔ XDC bridge | Planned |
 | XDC wXGR | Planned |
 | XDC wXGR / XDC liquidity | Planned |
