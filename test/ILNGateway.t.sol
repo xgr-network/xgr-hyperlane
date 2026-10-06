@@ -63,7 +63,8 @@ contract ILNGatewayTest is Test {
             address(router),
             MAILBOX,
             HOOK,
-            address(validatorSet)
+            address(validatorSet),
+            false
         );
 
         ILNRouteRegistry.Proposal memory proposal =
