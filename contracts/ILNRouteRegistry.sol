@@ -88,6 +88,7 @@ contract ILNRouteRegistry is IILNRouteRegistry {
     function getRoute(uint32 destinationDomain)
         external
         view
+        override
         returns (
             uint64 routeSourceChainId,
             uint32 routeSourceDomain,
