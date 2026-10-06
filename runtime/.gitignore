@@ -1,5 +1,6 @@
 .env.relayer
 .env.relayer.reverse
+.env.relayer.iln.base-to-xgr
 *.key
 *.pem
 runtime-state/
