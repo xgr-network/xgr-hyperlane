@@ -549,6 +549,26 @@ A fee update binds at minimum the source chain, destination domain, new native f
 
 The proposer and executor do not need privileged authority. The BLS quorum is the authorization.
 
+Completed governance quorums are exposed by validator nodes through a read-only RPC so that any executor can retrieve the proof package without trusting a specific XGR-operated service:
+
+~~~text
+proposal + validator votes
+        ↓
+2/3 BLS quorum
+        ↓
+validator node persists quorum
+        ↓
+read-only RPC by proposalId
+        ↓
+payload + signerBitmap + aggregateSignature
+        ↓
+any executor
+        ↓
+ILN registry execute(...) on the affected source chain
+~~~
+
+The RPC is read-only and must never create, approve, sign or execute a proposal.
+
 The target security property is:
 
 ~~~text
@@ -565,13 +585,17 @@ A relayer may choose what it delivers. It must not define what is valid.
 
 The node environment is not the canonical source of individual ILN route addresses.
 
-The node should be configured with the minimum bootstrap information required to locate the canonical on-chain ILN registry, for example:
+The node should be configured with the minimum bootstrap information required to locate the canonical on-chain ILN registry **per network**, for example:
 
 ~~~text
-XGR_INTERCHAIN_ILN_REGISTRY_ADDR=0x...
+XGR_INTERCHAIN_BASE_ILN_REGISTRY_ADDR=0x...
+XGR_INTERCHAIN_XGR_ILN_REGISTRY_ADDR=0x...
+XGR_INTERCHAIN_XDC_ILN_REGISTRY_ADDR=0x...
 ~~~
 
-together with the RPC / chain connectivity required to read it.
+together with the RPC / chain connectivity required to read the corresponding network.
+
+The ILN registry pointer is therefore network-scoped, not global. A validator may operate several network connections, each with its own local ILN registry contract.
 
 The canonical gateway, route state and mutable ILN parameters are then read from the quorum-governed on-chain registry.
 
@@ -787,7 +811,7 @@ Required node-side changes are expected to include:
 1. ILN route / application eligibility checks before signing;
 2. canonical ILN registry discovery from a minimal bootstrap configuration;
 3. native source-chain fee verification for ILN operations;
-4. ILN governance proposal creation, inspection, validator approval/signing and quorum aggregation;
+4. ILN governance proposal creation, inspection, validator approval/signing, quorum aggregation and read-only quorum retrieval by proposal ID;
 5. initial governance actions for FEE_UPDATE, ROUTE_ADD, ROUTE_ENABLE and ROUTE_DISABLE;
 6. preservation of existing v3.1.1 bridge behavior;
 7. explicit fail-closed handling for non-canonical ILN messages;
