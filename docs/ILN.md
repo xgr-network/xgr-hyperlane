@@ -307,47 +307,40 @@ New external-chain integrations should use V2-compatible security unless a later
 
 ---
 
-## 7. Planned ILN source-chain gateway
+## 7. Base-MVP source gateway
 
-The ILN needs a canonical entry point for fee-qualified bridge operations.
+The Base MVP uses a deliberately minimal `ILNGateway`.
 
-Working name:
-
-~~~text
-ILNGateway
-~~~
-
-For the initial implementation, fee-vault functionality may be integrated directly into the same contract to reduce:
-
-- deployment count,
-- gas overhead,
-- call depth,
-- attack surface.
-
-Conceptually:
+For each source direction, one immutable Gateway is deployed in front of the
+already existing Warp router. The Gateway is also its own canonical ILN route
+registry:
 
 ~~~text
-User
-  │
-  ▼
-ILNGateway / FeeVault
-  │
-  ├── validates ILN parameters
-  ├── escrows native validator fee
-  ├── emits fee / route accounting
-  └── invokes the canonical bridge path
-          │
-          ▼
-      Warp router
-          │
-          ▼
-       Mailbox
-          │
-          ▼
-    MerkleTreeHook
+ILN_REGISTRY_ADDR == ILNGateway
 ~~~
 
-The exact contract split is an implementation choice. The protocol invariant is more important than whether gateway and vault are one or two contracts.
+It implements both the node-required Gateway getters and
+`getRoute(uint32)` for exactly one constructor-fixed destination.
+
+There is no owner, mutable route table, validator-set mirror or fee-update
+function in the Base MVP.
+
+For every successful ILN operation the Gateway:
+
+1. verifies the fixed destination domain;
+2. requires the positive native validator fee;
+3. invokes the existing canonical Warp router;
+4. receives the real Hyperlane `messageId`;
+5. emits `ILNOperation(messageId,destinationDomain,validatorFeeWei)`.
+
+The Warp router remains the actual Hyperlane message sender.
+
+The launch validator fee is expected to be nominal, for example 1 wei. A
+material fee and signer-based distribution require a later reviewed contract
+generation.
+
+Future multi-spoke deployments may introduce a dynamic quorum-governed route
+registry if operational evidence justifies the additional complexity.
 
 ---
 
@@ -443,39 +436,30 @@ A fee update executed later in the same block must not invalidate an operation t
 
 ## 10. Fee distribution
 
-The long-term invariant is:
+Signer-based fee distribution is a **future requirement for material fees**,
+not part of the Base MVP.
 
-> The source-chain fee must be distributable to the validators whose signatures contributed to the accepted quorum for that hop, without requiring custody by a specific XGR-operated relayer.
+xgr-node v3.1.2 requires a strictly positive operation fee, so the initial
+immutable Base/XGR Gateways use an economically negligible value such as
+`1 wei`. The Gateway escrows that nominal amount so fee qualification remains
+atomic with bridge initiation.
 
-The attestation already exposes a signer bitmap and aggregate BLS proof.
+The Base MVP deliberately does not add validator-set mirrors, settlement
+proofs and claim accounting solely to distribute a negligible launch fee.
 
-The v3.1.2 settlement model is **claim-based**.
+Before a materially non-zero validator fee is introduced, the source-chain
+fee contract must be upgraded to a reviewed permissionless settlement model
+that credits only validators present in the accepted signer bitmap.
 
-After a completed attestation exists, any compatible caller may submit the settlement proof to the source-chain ILN fee contract:
-
-~~~text
-attestation + setId + signerBitmap + aggregate signature
-        ↓
-settle(...)
-        ↓
-verify quorum and prevent duplicate settlement
-        ↓
-claimable[signer] += equal signer share
-~~~
-
-Only validators whose bits are set in the accepted signer bitmap receive the fee for that operation.
-
-For ILN v1, the fee is divided **equally among the validators that actually signed the accepted quorum**.
-
-The contract accumulates balances per validator. Validators later withdraw their accumulated native-currency rewards themselves:
+The long-term target remains:
 
 ~~~text
-validator → claim() → native source-chain currency
+completed attestation + signerBitmap
+        ↓
+permissionless settlement
+        ↓
+claimable balance per actual signer
 ~~~
-
-This avoids pushing one native-currency transfer per signer during the user's bridge transaction and allows validators to batch many small rewards into one withdrawal.
-
-Settlement and withdrawal must not require an XGR-operated relayer or custodian. A settlement transaction may be submitted by any party, while only the validator's registered payout address may claim that validator's accrued balance.
 
 ---
 
@@ -511,127 +495,64 @@ ILN adds **eligibility conditions before signing**. It does not turn the relayer
 
 ## 12. Route registry
 
-For a permissionless operating model, canonical ILN routes should not ultimately depend only on an XGR GmbH server's local configuration.
+### Base MVP
 
-A planned ILN route registry should define the protocol-recognized route set.
+The Base MVP does **not** deploy a separate mutable route registry.
 
-Working concept:
+Each immutable `ILNGateway` also implements the exact `getRoute(uint32)` ABI
+consumed by xgr-node v3.1.2. Its route-critical values are constructor
+immutables, and `ilnRegistry()` returns the Gateway itself.
 
-~~~text
-ILNRouteRegistry
-~~~
+Therefore the protocol truth for the initial Base spoke is still on-chain,
+but it has no route administrator and no mutable route state.
 
-Possible route fields include:
+Changing the route requires deploying a new Gateway and performing an explicit
+controlled cutover.
 
-- source chain / domain,
-- destination chain / domain,
-- canonical source gateway,
-- canonical source Mailbox,
-- canonical checkpoint hook or path,
-- canonical destination recipient / router,
-- validator-fe asset rule,
-- minimum or configured fee parameters,
-- confirmation policy,
-- enabled / disabled state.
+### Future dynamic registry
 
-Canonical ILN route state and mutable ILN parameters are governed by the Interchain validator quorum rather than by a privileged administrator key.
+For a larger multi-spoke network, a separate quorum-governed route registry
+may become useful for FEE_UPDATE, ROUTE_ADD, ROUTE_ENABLE and ROUTE_DISABLE.
+The v3.1.2 node already contains governance payload/quorum capabilities for
+that future model, but the Base MVP intentionally does not depend on them.
 
-The governance lifecycle is:
-
-~~~text
-proposal create
-      ↓
-proposal ID / canonical payload
-      ↓
-Interchain validators inspect and approve/sign
-      ↓
-unweighted 2/3 BLS quorum
-      ↓
-proposal becomes executable
-      ↓
-any party may execute
-      ↓
-on-chain state changes
-~~~
-
-Initial ILN v1 proposal types are:
-
-- FEE_UPDATE,
-- ROUTE_ADD,
-- ROUTE_ENABLE,
-- ROUTE_DISABLE.
-
-A fee update binds at minimum the source chain, destination domain, new native fee, validator set context and a replay-safe proposal nonce / identifier.
-
-The proposer and executor do not need privileged authority. The BLS quorum is the authorization.
-
-Completed governance quorums are exposed by validator nodes through a read-only RPC so that any executor can retrieve the proof package without trusting a specific XGR-operated service:
-
-~~~text
-proposal + validator votes
-        ↓
-2/3 BLS quorum
-        ↓
-validator node persists quorum
-        ↓
-read-only RPC by proposalId
-        ↓
-payload + signerBitmap + aggregateSignature
-        ↓
-any executor
-        ↓
-ILN registry execute(...) on the affected source chain
-~~~
-
-The RPC is read-only and must never create, approve, sign or execute a proposal.
-
-The target security property is:
+This preserves the target property:
 
 ~~~text
 protocol-defined route state
-≠
-XGR GmbH relayer configuration
+!=
+relayer configuration
 ~~~
-
-A relayer may choose what it delivers. It must not define what is valid.
 
 ---
 
 ## 12.1 Node bootstrap configuration
 
-The node environment is not the canonical source of individual ILN route addresses.
+The node environment contains a network-scoped bootstrap pointer to the
+canonical on-chain ILN route source.
 
-The node should be configured with the minimum bootstrap information required to locate the canonical on-chain ILN registry **per network**, for example:
-
-~~~text
-XGR_INTERCHAIN_BASE_ILN_REGISTRY_ADDR=0x...
-XGR_INTERCHAIN_XGR_ILN_REGISTRY_ADDR=0x...
-XGR_INTERCHAIN_XDC_ILN_REGISTRY_ADDR=0x...
-~~~
-
-together with the RPC / chain connectivity required to read the corresponding network.
-
-The ILN registry pointer is therefore network-scoped, not global. A validator may operate several network connections, each with its own local ILN registry contract.
-
-The canonical gateway, route state and mutable ILN parameters are then read from the quorum-governed on-chain registry.
-
-Therefore:
+For the Base MVP that pointer is simply the immutable Gateway address:
 
 ~~~text
-ENV = bootstrap pointer
-on-chain ILN registry = protocol truth
+XGR_INTERCHAIN_BASE_ILN_REGISTRY_ADDR=<BASE_ILN_GATEWAY>
+XGR_INTERCHAIN_XGR_ILN_REGISTRY_ADDR=<XGR_ILN_GATEWAY>
 ~~~
 
-A validator operator changing a local environment variable must not be able to redefine a valid ILN route.
-
-In v3.1.2, the local route declaration only binds configured network names:
+The local route declaration binds only network names:
 
 ~~~text
 XGR_INTERCHAIN_ROUTE_BASE_TO_XGR_SOURCE_NETWORK=base
 XGR_INTERCHAIN_ROUTE_BASE_TO_XGR_DESTINATION=xgr
 ~~~
 
-Legacy route-local source fields such as `SOURCE_MAILBOX_ADDR`, `SOURCE_MERKLE_TREE_HOOK_ADDR`, `SOURCE_CHAIN_ID` and `SOURCE_TYPE` are not accepted by the v3.1.2 route loader. The canonical contract addresses come from the source network ILN registry.
+Legacy route-local source fields such as `SOURCE_MAILBOX_ADDR`,
+`SOURCE_MERKLE_TREE_HOOK_ADDR`, `SOURCE_CHAIN_ID` and `SOURCE_TYPE` are not
+accepted by v3.1.2.
+
+For future dynamic registries, the same ENV field can point to a dedicated
+registry contract without changing the node-side route model.
+
+---
 
 ### 12.2 v3.1.2 source-network cutover
 
@@ -652,7 +573,7 @@ XGR_INTERCHAIN_ROUTE_BASE_TO_XGR_SOURCE_NETWORK=base
 XGR_INTERCHAIN_ROUTE_BASE_TO_XGR_DESTINATION=xgr
 ~~~
 
-Canonical contract addresses and mutable fee state come from the source network's quorum-governed ILN registry.
+For the Base MVP, canonical contract addresses and the nominal fee come from the source network's immutable self-registry Gateway. A future multi-spoke deployment may instead use a separate quorum-governed registry.
 
 Validators persist their source scan cursor and pending local votes. The initial scan starts at `ILNGateway.activationBlock()`; completed attestations are indexed by the authorized Hyperlane `messageId` and exposed through a read-only RPC.
 
@@ -721,7 +642,7 @@ The common wXGR / XGR transit model avoids an N×N pool topology.
 
 ## 15. Economic route
 
-For the initial MVP:
+For the Base MVP:
 
 ~~~text
 Base
@@ -731,30 +652,29 @@ USDC
   ▼
 wXGR
   │
-  │ bridge fee in ETH
+  │ message-specific ILN bridge
   ▼
 XGRChain
 native XGR
-  │
-  │ bridge fee in XGR
-  ▼
-XDC
-wXGR
-  │
-  │ local AMM
-  ▼
-XDC
 ~~~
 
-The total user cost consists of:
+and in the reverse direction:
 
-- local AMM fees,
-- local AMM slippage,
-- source transaction gas for each hop,
-- native Interchain validator fee for each hop,
-- destination delivery gas / relayer economics as applicable.
+~~~text
+native XGR on XGRChain
+  │
+  │ message-specific ILN bridge
+  ▼
+wXGR on Base
+~~~
 
-The number of deployed contracts is not the number of user transactions. Internal contract calls remain part of the same source transaction where designed atomically.
+The total user cost consists of Base/XGR transaction gas, the local AMM fee
+and slippage, and the nominal source validator fee. With the initial roughly
+500-USDC pool side, useful trade size is determined primarily by live AMM
+slippage rather than bridge capacity.
+
+XDC and a second external-chain AMM hop are deferred until after Base-MVP
+evidence.
 
 ---
 
@@ -777,54 +697,50 @@ Potential advantages include:
 
 ## 17. Base contract map
 
-### Existing Base production contracts
+### Existing Base production contracts retained
 
 | Logical role | Contract |
 | --- | --- |
-| wXGR asset routing | Base synthetic XGR / wXGR Warp router |
-| message transport | Hyperlane Mailbox |
-| checkpoint tree | Hyperlane MerkleTreeHook |
-| XGR BLS verification | XGRInterchainBLSVerifier V1 |
-| destination validator membership | XGRInterchainValidatorRegistry V1 |
-| XGR-origin security module | XGRNativeInterchainISM V1 |
+| wXGR asset routing | existing Base synthetic wXGR Warp router/token |
+| message transport | existing Hyperlane Mailbox |
+| checkpoint tree | existing Hyperlane MerkleTreeHook |
+| XGR BLS verification | existing XGRInterchainBLSVerifier V1 |
+| destination validator membership | existing XGRInterchainValidatorRegistry V1 |
 
-### Planned Base ILN additions
+### New Base-MVP contracts
 
-| Logical role | Planned component |
+| Logical role | Component |
 | --- | --- |
-| canonical ILN entry + native ETH validator fee escrow | ILNGateway / FeeVault |
-| canonical ILN application / route restriction | v3.1.2 ILN authorization mechanism; final contract split TBD |
+| Base -> XGR canonical ILN entry + immutable route + nominal ETH fee escrow | `ILNGateway` |
+| XGR -> Base message-specific BLS/Merkle authorization | `XGRILNInterchainISM` |
 
-The existing production bridge contracts are not discarded.
+The existing Base validator registry and wXGR Warp router are reused.
 
 ---
 
 ## 18. XGRChain contract map
 
-### Existing XGRChain production contracts
+### Existing XGRChain production contracts retained
 
 | Logical role | Contract |
 | --- | --- |
-| native XGR asset routing | XGR native Warp router |
-| message transport | XGR Hyperlane-compatible Mailbox |
-| checkpoint tree | XGR MerkleTreeHook |
-| source-domain routing | DomainRoutingISM |
-| reverse security composition | AggregationISM |
-| operational safety | PausableISM |
-| native BLS security | XGRNativeInterchainISMV2 |
-| validator membership / historical sets | XGRInterchainValidatorRegistryV2 |
-| compressed BLS verification | native precompile 0x2040 |
+| native XGR asset routing | existing native XGR Warp router |
+| message transport | existing XGR Mailbox |
+| checkpoint tree | existing XGR MerkleTreeHook |
+| source-domain routing | existing DomainRoutingISM |
+| operational safety | existing PausableISM |
+| validator membership / historical sets | existing XGRInterchainValidatorRegistryV2 |
+| compressed BLS verification | native precompile `0x2040` |
 
-### Planned XGRChain ILN additions
+### New Base-MVP components
 
-Potential additions include:
+| Logical role | Component |
+| --- | --- |
+| XGR -> Base canonical ILN entry + immutable route + nominal XGR fee escrow | `ILNGateway` |
+| Base -> XGR message-specific authorization | `XGRILNInterchainISMV2` |
+| safety composition | fresh 2-of-2 PausableISM + ILN-ISM aggregation |
 
-- ILN route registry,
-- XGR-source ILN fee handling for outbound hops,
-- ILN authorization policy consumed by the native worker,
-- XDC route configuration and XDC destination security deployment.
-
-Exact contract count should be minimized.
+No new validator registry is required on XGRChain.
 
 ---
 
@@ -855,27 +771,26 @@ The exact DEX and pool implementation are separate from the Interchain security 
 
 ## 20. v3.1.2 node scope
 
-The planned xgr-node v3.1.2 scope should remain narrowly focused.
+The v3.1.2 node scope remains outside consensus-critical execution.
 
-Required node-side changes are expected to include:
+For the Base MVP the required runtime behavior is:
 
-1. ILN route / application eligibility checks before signing;
-2. canonical ILN registry discovery from a minimal bootstrap configuration;
-3. native source-chain fee verification for ILN operations;
-4. ILN governance proposal creation, inspection, validator approval/signing, quorum aggregation and read-only quorum retrieval by proposal ID;
-5. initial governance actions for FEE_UPDATE, ROUTE_ADD, ROUTE_ENABLE and ROUTE_DISABLE;
-6. preservation of existing v3.1.1 bridge behavior;
-7. explicit fail-closed handling for non-canonical ILN messages;
-8. support for the new XDC route;
-9. deterministic tests covering foreign-contract abuse attempts;
-10. deterministic tests covering missing or invalid fee conditions;
-11. deterministic tests covering stale/replayed governance proposals and insufficient quorum.
+1. discover the immutable source Gateway through `ILN_REGISTRY_ADDR`;
+2. read and historically validate its canonical `getRoute(uint32)` tuple;
+3. scan only confirmed `ILNOperation` events from that exact Gateway;
+4. verify exact messageId, fee, source block, route and Merkle root before signing;
+5. aggregate the existing unweighted two-thirds Interchain BLS quorum;
+6. persist/rebroadcast message-specific votes and attestations;
+7. expose attestations by route and messageId;
+8. fail closed for legacy or non-canonical route data.
 
-The ILN worker remains outside weighted-IBFT consensus-critical execution.
+The governance proposal/quorum machinery implemented in v3.1.2 remains
+available for a future dynamic registry generation but is not required to
+activate the immutable Base MVP.
 
-The v3.1.2 design does **not** require a chain hard fork as long as it remains confined to the Interchain worker, ordinary EVM contracts and existing BLS execution support. It must not modify IBFT block-validity rules, EVM state-transition rules or consensus-critical execution.
-
-An ILN failure must not stop XGRChain block production or finality.
+The v3.1.2 design does not modify IBFT block-validity rules, EVM
+state-transition rules or consensus-critical execution. An ILN failure must
+not stop XGRChain block production or finality.
 
 ---
 
@@ -930,20 +845,20 @@ Invalid route, fee, signer set, signature, proof or safety state must reject the
 
 A conservative Base-MVP implementation order is:
 
-1. build and release xgr-node v3.1.2;
-2. upgrade all Interchain validators with no active ILN routes;
-3. deploy the Base/XGR validator-set mirrors and destination RegistryV2 where required;
-4. deploy the Base and XGR source ILN registries and Gateways;
-5. deploy the message-specific destination ILN ISMs;
-6. create the XGR PausableISM + ILN-ISM aggregation for Base-origin messages;
-7. create and approve the two ROUTE_ADD proposals through validator quorum governance;
-8. execute the route proposals on their respective source-chain registries;
-9. perform the destination security cutover;
+1. complete and publish xgr-node v3.1.2;
+2. upgrade all Interchain validators with no active ILN route;
+3. deploy the immutable Base source Gateway;
+4. deploy the immutable XGR source Gateway;
+5. deploy Base `XGRILNInterchainISM` using the existing Base V1 registry;
+6. deploy XGR `XGRILNInterchainISMV2` using the existing XGR RegistryV2;
+7. deploy a fresh XGR PausableISM + ILN-ISM 2-of-2 aggregation;
+8. configure node `ILN_REGISTRY_ADDR` values to the corresponding Gateways;
+9. perform the controlled destination-security cutover;
 10. run both ILN relayers in observe-only mode and require static validation;
-11. validate controlled tiny transfers in both directions;
-12. seed the small Base USDC / wXGR pool;
-13. expose live quotes / slippage in the user-facing route;
-14. consider additional spokes only after Base-MVP evidence.
+11. validate tiny transfers in both directions;
+12. enable continuous submission only after both directions pass;
+13. seed the small Base USDC/wXGR pool;
+14. expose live AMM quote/slippage in the user-facing route.
 
 The exact operational sequence is maintained in `docs/ILN_BASE_MVP.md`.
 
@@ -986,22 +901,20 @@ with:
 
 | Capability | Status |
 | --- | --- |
-| XGRChain ↔ Base bridge | Mainnet |
+| XGRChain ↔ Base bridge | Mainnet v3.1.1 baseline |
 | XGR-native BLS quorum | Mainnet |
 | Replaceable relayer trust model | Mainnet architecture |
 | Base wXGR | Mainnet |
-| Base USDC / wXGR ILN liquidity | Base MVP / small initial pool planned |
-| ILNGateway / FeeVault | Implemented in repository / deployment pending |
-| Native source-chain validator fee | Implemented in Gateway / deployment pending |
-| Equal-share signer settlement + claim() | Implemented in Gateway / deployment pending |
-| 2/3 BLS proposal governance | Node implementation complete on PoS_3; on-chain executor contract pending |
-| On-chain canonical ILN route registry | Implemented in repository / deployment pending |
-| ILN application / route authorization | Message-specific ISM implemented / deployment pending |
-| xgr-node v3.1.2 ILN eligibility | Implemented on PoS_3; build/test validation pending |
-| XGRChain ↔ XDC bridge | Deferred / future spoke |
-| XDC wXGR | Deferred |
-| XDC wXGR / XDC liquidity | Deferred |
-| Base ↔ XGR Base-spoke ILN route | Implementation complete in repo / deployment pending |
+| Base USDC / wXGR ILN liquidity | small Base-MVP pool planned |
+| immutable self-registry `ILNGateway` | implemented in repository / deployment pending |
+| nominal positive source-chain validator fee | implemented / launch target 1 wei |
+| signer-based material-fe settlement | deferred |
+| Base message-specific V1-registry ISM | implemented / deployment pending |
+| XGR message-specific RegistryV2 ISM | implemented / deployment pending |
+| dynamic quorum-governed ILN route registry | deferred; node governance capability retained |
+| xgr-node v3.1.2 message-specific ILN eligibility | implemented and release validation in progress |
+| Base ↔ XGR ILN route | deployment/E2E pending |
+| XDC spoke | deferred |
 
 ---
 
