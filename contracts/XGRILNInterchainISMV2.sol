@@ -2,85 +2,36 @@
 pragma solidity ^0.8.24;
 
 import {IXGRInterchainValidatorSetV2} from "./IXGRInterchainValidatorSetV2.sol";
-import {IXGRInterchainBLSVerifier} from "./XGRInterchainValidatorRegistry.sol";
+import {XGRILNProtocol} from "./XGRILNProtocol.sol";
 
-/// @notice Message-specific destination ISM for XGR ILN transfers.
-/// @dev The BLS payload binds one authorized Hyperlane messageId plus the exact
-///      source route context and source block. A signed Merkle root alone is not
-///      sufficient authorization.
+/// @notice Generic destination ISM for XGR Interchain v3.1.3.
+/// @dev One instance can verify any legitimate route terminating at the
+///      destination represented by the canonical ValidatorRegistryV2.
+///      Route and message context are carried inside the signed checkpoint
+///      payload; the relayer cannot choose them independently.
 contract XGRILNInterchainISMV2 {
-    bytes private constant CHECKPOINT_DOMAIN_V1 = "XGR_ILN_CHECKPOINT_V1";
     uint256 private constant TREE_DEPTH = 32;
-    uint256 private constant COMPRESSED_G2_SIGNATURE_LENGTH = 96;
-    uint256 private constant EIP2537_G2_SIGNATURE_LENGTH = 256;
-    uint8 private constant VERIFIER_FORMAT_COMPRESSED = 1;
-    uint8 private constant VERIFIER_FORMAT_EIP2537 = 2;
     uint8 private constant MODULE_TYPE_CUSTOM = 0;
 
     IXGRInterchainValidatorSetV2 public immutable registry;
-    IXGRInterchainBLSVerifier public immutable verifier;
-
-    uint64 public immutable sourceChainId;
-    uint32 public immutable originDomain;
     uint32 public immutable destinationDomain;
-    address public immutable sourceILNRegistry;
-    address public immutable sourceGateway;
-    address public immutable sourceRouter;
-    address public immutable originMailbox;
-    address public immutable originMerkleTreeHook;
-    address public immutable destinationRouter;
 
     error InvalidConfiguration();
 
-    constructor(
-        address validatorRegistry_,
-        uint64 sourceChainId_,
-        uint32 originDomain_,
-        address sourceILNRegistry_,
-        address sourceGateway_,
-        address sourceRouter_,
-        address originMailbox_,
-        address originMerkleTreeHook_,
-        address destinationRouter_
-    ) {
-        if (
-            validatorRegistry_ == address(0) ||
-            sourceChainId_ == 0 ||
-            originDomain_ == 0 ||
-            sourceILNRegistry_ == address(0) ||
-            sourceGateway_ == address(0) ||
-            sourceRouter_ == address(0) ||
-            originMailbox_ == address(0) ||
-            originMerkleTreeHook_ == address(0) ||
-            destinationRouter_ == address(0)
-        ) revert InvalidConfiguration();
+    constructor(address validatorRegistry_) {
+        if (validatorRegistry_ == address(0)) revert InvalidConfiguration();
 
         IXGRInterchainValidatorSetV2 registryView =
             IXGRInterchainValidatorSetV2(validatorRegistry_);
-        address verifierAddress = registryView.verifier();
         uint32 destination = registryView.destinationDomain();
-        uint8 format = registryView.verifierKeyFormat();
 
         if (
-            verifierAddress == address(0) ||
             destination == 0 ||
-            (
-                format != VERIFIER_FORMAT_COMPRESSED &&
-                format != VERIFIER_FORMAT_EIP2537
-            )
+            registryView.verifier() == address(0)
         ) revert InvalidConfiguration();
 
         registry = registryView;
-        verifier = IXGRInterchainBLSVerifier(verifierAddress);
-        sourceChainId = sourceChainId_;
-        originDomain = originDomain_;
         destinationDomain = destination;
-        sourceILNRegistry = sourceILNRegistry_;
-        sourceGateway = sourceGateway_;
-        sourceRouter = sourceRouter_;
-        originMailbox = originMailbox_;
-        originMerkleTreeHook = originMerkleTreeHook_;
-        destinationRouter = destinationRouter_;
     }
 
     function moduleType() external pure returns (uint8) {
@@ -91,11 +42,22 @@ contract XGRILNInterchainISMV2 {
     /// abi.encode(
     ///   uint32 messageIndex,
     ///   bytes32[32] merkleProof,
-    ///   uint32 checkpointIndex,
+    ///   uint64 sourceChainId,
+    ///   uint32 sourceDomain,
+    ///   uint32 destinationDomain,
+    ///   bytes32 routeId,
     ///   uint64 setId,
     ///   uint64 sourceBlockNumber,
+    ///   address sourceRegistry,
+    ///   address sourceGateway,
+    ///   address sourceRouter,
+    ///   address sourceMailbox,
+    ///   address sourceMerkleTreeHook,
+    ///   address destinationRouter,
     ///   uint256 validatorFeeWei,
     ///   bytes32 authorizedMessageId,
+    ///   bytes32 root,
+    ///   uint32 checkpointIndex,
     ///   bytes signerBitmap,
     ///   bytes aggregateSignature
     /// )
@@ -105,25 +67,26 @@ contract XGRILNInterchainISMV2 {
         returns (bool)
     {
         if (message.length < 77) return false;
-        if (_messageOrigin(message) != originDomain) return false;
-        if (_messageDestination(message) != destinationDomain) return false;
-        if (
-            _messageSender(message) !=
-            bytes32(uint256(uint160(sourceRouter)))
-        ) return false;
-        if (
-            _messageRecipient(message) !=
-            bytes32(uint256(uint160(destinationRouter)))
-        ) return false;
 
         (
             uint32 messageIndex,
             bytes32[32] memory proof,
-            uint32 checkpointIndex,
+            uint64 sourceChainId,
+            uint32 sourceDomain,
+            uint32 payloadDestinationDomain,
+            bytes32 routeId,
             uint64 setId,
             uint64 sourceBlockNumber,
+            address sourceRegistry,
+            address sourceGateway,
+            address sourceRouter,
+            address sourceMailbox,
+            address sourceMerkleTreeHook,
+            address destinationRouter,
             uint256 validatorFeeWei,
             bytes32 authorizedMessageId,
+            bytes32 root,
+            uint32 checkpointIndex,
             bytes memory signerBitmap,
             bytes memory aggregateSignature
         ) = abi.decode(
@@ -131,120 +94,105 @@ contract XGRILNInterchainISMV2 {
             (
                 uint32,
                 bytes32[32],
+                uint64,
                 uint32,
+                uint32,
+                bytes32,
                 uint64,
                 uint64,
+                address,
+                address,
+                address,
+                address,
+                address,
+                address,
                 uint256,
                 bytes32,
+                bytes32,
+                uint32,
                 bytes,
                 bytes
             )
         );
 
         if (
-            messageIndex > checkpointIndex ||
+            sourceChainId == 0 ||
+            sourceDomain == 0 ||
+            payloadDestinationDomain != destinationDomain ||
+            routeId == bytes32(0) ||
             setId == 0 ||
             sourceBlockNumber == 0 ||
-            validatorFeeWei == 0
+            sourceRegistry == address(0) ||
+            sourceGateway == address(0) ||
+            sourceRouter == address(0) ||
+            sourceMailbox == address(0) ||
+            sourceMerkleTreeHook == address(0) ||
+            destinationRouter == address(0) ||
+            validatorFeeWei == 0 ||
+            authorizedMessageId == bytes32(0) ||
+            root == bytes32(0) ||
+            messageIndex > checkpointIndex
+        ) return false;
+
+        if (_messageOrigin(message) != sourceDomain) return false;
+        if (_messageDestination(message) != destinationDomain) return false;
+
+        if (
+            _messageSender(message) !=
+            bytes32(uint256(uint160(sourceRouter)))
+        ) return false;
+
+        if (
+            _messageRecipient(message) !=
+            bytes32(uint256(uint160(destinationRouter)))
         ) return false;
 
         bytes32 actualMessageId = keccak256(message);
-        if (
-            authorizedMessageId == bytes32(0) ||
-            authorizedMessageId != actualMessageId
-        ) return false;
+        if (actualMessageId != authorizedMessageId) return false;
 
-        uint8 format = registry.verifierKeyFormat();
-        if (
-            (
-                format == VERIFIER_FORMAT_COMPRESSED &&
-                aggregateSignature.length !=
-                COMPRESSED_G2_SIGNATURE_LENGTH
-            ) ||
-            (
-                format == VERIFIER_FORMAT_EIP2537 &&
-                aggregateSignature.length !=
-                EIP2537_G2_SIGNATURE_LENGTH
-            )
-        ) return false;
-
-        bytes32 signedRoot = _branchRoot(
+        bytes32 reconstructedRoot = _branchRoot(
             actualMessageId,
             proof,
             uint256(messageIndex)
         );
-        if (signedRoot == bytes32(0)) return false;
+        if (reconstructedRoot != root) return false;
 
-        (
-            address[] memory validators,
-            bytes[] memory publicKeys,
-            uint64 resolvedSetId
-        ) = registry.getValidatorSetForVerification(setId);
+        XGRILNProtocol.CheckpointPayload memory payload =
+            XGRILNProtocol.CheckpointPayload({
+                sourceChainId: sourceChainId,
+                sourceDomain: sourceDomain,
+                destinationDomain: payloadDestinationDomain,
+                routeId: routeId,
+                setId: setId,
+                sourceBlockNumber: sourceBlockNumber,
+                registry: sourceRegistry,
+                gateway: sourceGateway,
+                sourceRouter: sourceRouter,
+                mailbox: sourceMailbox,
+                merkleTreeHook: sourceMerkleTreeHook,
+                destinationRouter: destinationRouter,
+                validatorFeeWei: validatorFeeWei,
+                authorizedMessageId: authorizedMessageId,
+                root: root,
+                index: checkpointIndex
+            });
 
-        if (
-            resolvedSetId != setId ||
-            validators.length == 0 ||
-            validators.length != publicKeys.length
-        ) return false;
+        bytes memory signedPayload =
+            XGRILNProtocol.encodeCheckpointPayload(payload);
 
-        uint256 threshold = (2 * validators.length + 2) / 3;
-        if (!_bitmapHasQuorum(
-            signerBitmap,
-            validators.length,
-            threshold
-        )) return false;
-
-        bytes memory payload = encodeCheckpointPayload(
+        return registry.verifyQuorum(
             setId,
-            sourceBlockNumber,
-            validatorFeeWei,
-            authorizedMessageId,
-            signedRoot,
-            checkpointIndex
-        );
-
-        return verifier.verify(
-            payload,
-            publicKeys,
+            signedPayload,
             signerBitmap,
             aggregateSignature
         );
     }
 
     function encodeCheckpointPayload(
-        uint64 setId,
-        uint64 sourceBlockNumber,
-        uint256 validatorFeeWei,
-        bytes32 authorizedMessageId,
-        bytes32 root,
-        uint32 checkpointIndex
-    ) public view returns (bytes memory) {
-        if (
-            setId == 0 ||
-            sourceBlockNumber == 0 ||
-            validatorFeeWei == 0 ||
-            authorizedMessageId == bytes32(0) ||
-            root == bytes32(0)
-        ) revert InvalidConfiguration();
-
-        return abi.encodePacked(
-            CHECKPOINT_DOMAIN_V1,
-            bytes8(sourceChainId),
-            bytes4(originDomain),
-            bytes4(destinationDomain),
-            bytes8(setId),
-            bytes8(sourceBlockNumber),
-            bytes20(sourceILNRegistry),
-            bytes20(sourceGateway),
-            bytes20(sourceRouter),
-            bytes20(originMailbox),
-            bytes20(originMerkleTreeHook),
-            bytes20(destinationRouter),
-            bytes32(validatorFeeWei),
-            authorizedMessageId,
-            root,
-            bytes4(checkpointIndex)
-        );
+        XGRILNProtocol.CheckpointPayload calldata payload
+    ) external pure returns (bytes memory) {
+        XGRILNProtocol.CheckpointPayload memory p = payload;
+        return XGRILNProtocol.encodeCheckpointPayload(p);
     }
 
     function _messageOrigin(bytes calldata message)
@@ -297,54 +245,5 @@ contract XGRILNInterchainISMV2 {
                 );
             }
         }
-    }
-
-    function _bitmapHasQuorum(
-        bytes memory bitmap,
-        uint256 validatorCount,
-        uint256 threshold
-    ) private pure returns (bool) {
-        if (
-            validatorCount == 0 ||
-            threshold == 0 ||
-            bitmap.length == 0
-        ) return false;
-
-        uint256 maxBitmapLength = (validatorCount + 7) / 8;
-        if (
-            bitmap.length > maxBitmapLength ||
-            bitmap[0] == bytes1(0)
-        ) return false;
-
-        uint256 count;
-        for (uint256 i = 0; i < validatorCount; i++) {
-            uint256 byteFromEnd = i >> 3;
-            uint256 bitIndex = i & 7;
-            if (
-                byteFromEnd < bitmap.length &&
-                (
-                    uint8(bitmap[bitmap.length - 1 - byteFromEnd]) &
-                    uint8(1 << bitIndex)
-                ) != 0
-            ) count++;
-        }
-
-        for (
-            uint256 i = validatorCount;
-            i < bitmap.length * 8;
-            i++
-        ) {
-            uint256 byteFromEnd = i >> 3;
-            uint256 bitIndex = i & 7;
-            if (
-                byteFromEnd < bitmap.length &&
-                (
-                    uint8(bitmap[bitmap.length - 1 - byteFromEnd]) &
-                    uint8(1 << bitIndex)
-                ) != 0
-            ) return false;
-        }
-
-        return count >= threshold;
     }
 }
