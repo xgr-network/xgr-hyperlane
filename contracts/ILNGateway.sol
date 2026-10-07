@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
+import {IXGRILNRegistry} from "./IXGRILNRegistry.sol";
+
 struct ILNQuote {
     address token;
     uint256 amount;
@@ -22,31 +24,16 @@ interface IILNWarpRouter {
     ) external payable returns (bytes32 messageId);
 }
 
-interface IILNERC20 {
-    function transferFrom(
-        address from,
-        address to,
-        uint256 amount
-    ) external returns (bool);
-}
-
-/// @notice Minimal immutable ILN v3.1.2 source gateway.
-/// @dev For the Base MVP the gateway is also the canonical route registry:
-///      ilnRegistry() returns address(this) and getRoute() exposes one immutable
-///      route. There is no owner, route admin, validator-set mirror or mutable
-///      fee state.
+/// @notice Route-specific source gateway for XGR Interchain v3.1.3.
+/// @dev The shared ILN Registry is canonical for mutable route state. The
+///      Gateway binds one routeId to one source Warp router and emits exactly
+///      one fee-qualified ILNOperation for each successful Hyperlane message.
 contract ILNGateway {
-    uint64 public immutable sourceChainId;
-    uint32 public immutable sourceDomain;
+    IXGRILNRegistry public immutable ilnRegistry;
+    bytes32 public immutable routeId;
     uint32 public immutable destinationDomain;
-
     address public immutable warpRouter;
     address public immutable warpToken;
-    address public immutable mailbox;
-    address public immutable merkleTreeHook;
-    address public immutable destinationRouter;
-
-    uint256 public immutable validatorFeeWei;
     bool public immutable nativeQuoteIncludesPrincipal;
     uint256 public immutable activationBlock;
 
@@ -60,10 +47,12 @@ contract ILNGateway {
     error InvalidValue(uint256 expected, uint256 got);
     error UnsupportedWarpFee();
     error TokenTransferFailed();
+    error TokenApprovalFailed();
     error InvalidMessageId();
     error ReentrantCall();
 
     event ILNOperation(
+        bytes32 indexed routeId,
         bytes32 indexed messageId,
         uint32 indexed destinationDomain,
         uint256 validatorFeeWei
@@ -77,86 +66,53 @@ contract ILNGateway {
     }
 
     constructor(
-        uint32 sourceDomain_,
+        address ilnRegistry_,
+        bytes32 routeId_,
         uint32 destinationDomain_,
         address warpRouter_,
-        address mailbox_,
-        address merkleTreeHook_,
-        address destinationRouter_,
-        uint256 validatorFeeWei_,
         bool nativeQuoteIncludesPrincipal_
     ) {
         if (
-            block.chainid == 0 ||
-            block.chainid > type(uint64).max ||
-            sourceDomain_ == 0 ||
+            ilnRegistry_ == address(0) ||
+            routeId_ == bytes32(0) ||
             destinationDomain_ == 0 ||
-            sourceDomain_ == destinationDomain_ ||
-            warpRouter_ == address(0) ||
-            mailbox_ == address(0) ||
-            merkleTreeHook_ == address(0) ||
-            destinationRouter_ == address(0) ||
-            validatorFeeWei_ == 0
+            warpRouter_ == address(0)
         ) revert InvalidConfiguration();
 
         address token = IILNWarpRouter(warpRouter_).token();
-        if (token != address(0) && token != warpRouter_) {
-            revert InvalidConfiguration();
-        }
         if (token != address(0) && nativeQuoteIncludesPrincipal_) {
             revert InvalidConfiguration();
         }
 
-        sourceChainId = uint64(block.chainid);
-        sourceDomain = sourceDomain_;
+        ilnRegistry = IXGRILNRegistry(ilnRegistry_);
+        routeId = routeId_;
         destinationDomain = destinationDomain_;
         warpRouter = warpRouter_;
         warpToken = token;
-        mailbox = mailbox_;
-        merkleTreeHook = merkleTreeHook_;
-        destinationRouter = destinationRouter_;
-        validatorFeeWei = validatorFeeWei_;
         nativeQuoteIncludesPrincipal = nativeQuoteIncludesPrincipal_;
         activationBlock = block.number;
     }
 
-    /// @notice xgr-node gateway-binding getter.
-    /// @dev The immutable MVP gateway is its own canonical registry.
-    function ilnRegistry() external view returns (address) {
-        return address(this);
+    /// @notice xgrchain gateway-binding getter.
+    function mailbox() external view returns (address) {
+        IXGRILNRegistry.RouteRecord memory route = _canonicalRoute();
+        return route.mailbox;
     }
 
-    /// @notice Canonical xgr-node v3.1.2 route ABI.
-    function getRoute(uint32 requestedDestinationDomain)
-        external
-        view
-        returns (
-            uint64 routeSourceChainId,
-            uint32 routeSourceDomain,
-            address gateway,
-            address sourceRouter,
-            address routeMailbox,
-            address routeMerkleTreeHook,
-            address routeDestinationRouter,
-            uint256 routeValidatorFeeWei,
-            bool enabled
-        )
-    {
-        if (requestedDestinationDomain != destinationDomain) {
-            revert InvalidRoute();
-        }
+    /// @notice xgrchain gateway-binding getter.
+    function merkleTreeHook() external view returns (address) {
+        IXGRILNRegistry.RouteRecord memory route = _canonicalRoute();
+        return route.merkleTreeHook;
+    }
 
-        return (
-            sourceChainId,
-            sourceDomain,
-            address(this),
-            warpRouter,
-            mailbox,
-            merkleTreeHook,
-            destinationRouter,
-            validatorFeeWei,
-            true
-        );
+    function destinationRouter() external view returns (address) {
+        IXGRILNRegistry.RouteRecord memory route = _canonicalRoute();
+        return route.destinationRouter;
+    }
+
+    function validatorFeeWei() external view returns (uint256) {
+        IXGRILNRegistry.RouteRecord memory route = _canonicalRoute();
+        return route.validatorFeeWei;
     }
 
     function quoteILN(
@@ -180,9 +136,11 @@ contract ILNGateway {
             revert InvalidAmount();
         }
 
+        IXGRILNRegistry.RouteRecord memory route = _canonicalRoute();
         routerNativeValueWei = _quoteRouterNative(recipient, amount);
-        routeValidatorFeeWei = validatorFeeWei;
-        totalNativeValueWei = validatorFeeWei + routerNativeValueWei;
+        routeValidatorFeeWei = route.validatorFeeWei;
+        totalNativeValueWei =
+            route.validatorFeeWei + routerNativeValueWei;
         totalTokenAmount = warpToken == address(0) ? 0 : amount;
     }
 
@@ -198,38 +156,79 @@ contract ILNGateway {
             revert InvalidAmount();
         }
 
+        IXGRILNRegistry.RouteRecord memory route = _canonicalRoute();
+
         uint256 routerNativeValueWei =
             _quoteRouterNative(recipient, amount);
         uint256 expectedValue =
-            validatorFeeWei + routerNativeValueWei;
+            route.validatorFeeWei + routerNativeValueWei;
 
         if (msg.value != expectedValue) {
             revert InvalidValue(expectedValue, msg.value);
         }
 
         if (warpToken != address(0)) {
-            if (
-                !IILNERC20(warpToken).transferFrom(
-                    msg.sender,
-                    address(this),
-                    amount
-                )
-            ) revert TokenTransferFailed();
+            _safeTransferFrom(
+                warpToken,
+                msg.sender,
+                address(this),
+                amount
+            );
+
+            if (warpToken != warpRouter) {
+                _forceApprove(warpToken, warpRouter, amount);
+            }
         }
 
         messageId = IILNWarpRouter(warpRouter).transferRemote{
             value: routerNativeValueWei
         }(destinationDomain, recipient, amount);
 
+        if (warpToken != address(0) && warpToken != warpRouter) {
+            _forceApprove(warpToken, warpRouter, 0);
+        }
+
         if (messageId == bytes32(0)) revert InvalidMessageId();
 
-        totalValidatorFeesEscrowedWei += validatorFeeWei;
+        totalValidatorFeesEscrowedWei += route.validatorFeeWei;
 
         emit ILNOperation(
+            routeId,
             messageId,
             destinationDomain,
-            validatorFeeWei
+            route.validatorFeeWei
         );
+    }
+
+    function _canonicalRoute()
+        private
+        view
+        returns (IXGRILNRegistry.RouteRecord memory route)
+    {
+        (
+            route.sourceChainId,
+            route.sourceDomain,
+            route.gateway,
+            route.sourceRouter,
+            route.mailbox,
+            route.merkleTreeHook,
+            route.destinationRouter,
+            route.validatorFeeWei,
+            route.enabled
+        ) = ilnRegistry.getRoute(destinationDomain, routeId);
+
+        if (
+            !route.enabled ||
+            route.sourceChainId == 0 ||
+            route.sourceChainId != uint64(block.chainid) ||
+            route.sourceDomain == 0 ||
+            route.gateway != address(this) ||
+            route.sourceRouter != warpRouter ||
+            route.mailbox == address(0) ||
+            route.merkleTreeHook == address(0) ||
+            route.destinationRouter == address(0) ||
+            route.validatorFeeWei == 0
+        ) revert InvalidRoute();
     }
 
     function _quoteRouterNative(
@@ -264,11 +263,55 @@ contract ILNGateway {
             return nativeValueWei;
         }
 
-        // Supported synthetic-router variants either omit the token quote or
-        // echo the exact bridged principal. Any different token-denominated
-        // charge is deliberately unsupported by the Base MVP.
         if (tokenQuote != 0 && tokenQuote != amount) {
             revert UnsupportedWarpFee();
         }
+    }
+
+    function _safeTransferFrom(
+        address token,
+        address from,
+        address to,
+        uint256 amount
+    ) private {
+        (bool ok, bytes memory data) = token.call(
+            abi.encodeWithSelector(
+                bytes4(keccak256("transferFrom(address,address,uint256)")),
+                from,
+                to,
+                amount
+            )
+        );
+        if (
+            !ok ||
+            (data.length != 0 && !abi.decode(data, (bool)))
+        ) revert TokenTransferFailed();
+    }
+
+    function _forceApprove(
+        address token,
+        address spender,
+        uint256 amount
+    ) private {
+        if (_callApprove(token, spender, amount)) return;
+        if (
+            !_callApprove(token, spender, 0) ||
+            !_callApprove(token, spender, amount)
+        ) revert TokenApprovalFailed();
+    }
+
+    function _callApprove(
+        address token,
+        address spender,
+        uint256 amount
+    ) private returns (bool) {
+        (bool ok, bytes memory data) = token.call(
+            abi.encodeWithSelector(
+                bytes4(keccak256("approve(address,uint256)")),
+                spender,
+                amount
+            )
+        );
+        return ok && (data.length == 0 || abi.decode(data, (bool)));
     }
 }
