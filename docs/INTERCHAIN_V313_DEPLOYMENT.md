@@ -147,3 +147,101 @@ forge test -vvv
 ```
 
 Do not deploy if either command fails.
+
+
+## Multi-asset repository and automation convention
+
+The v3.1.3 deployment model is intentionally optimized for many assets.
+
+### Shared once per chain
+
+The following infrastructure is expected to be deployed once per physical chain and reused:
+
+```text
+Hyperlane Core / Mailbox
+MerkleTreeHook
+BLS verifier
+XGRInterchainValidatorRegistryV2
+XGRILNRegistry
+generic XGRILNInterchainISMV2
+```
+
+Do not redeploy this stack for every new token unless a protocol upgrade explicitly requires a new generation.
+
+### Incremental per asset / route
+
+A new asset normally adds only:
+
+```text
+Warp Router / Token Adapter
+ILNGateway per source route
+routeId registration
+governance state
+```
+
+### Recommended repository layout
+
+```text
+config/
+├─ chains/
+│  ├─ xgrchain.json
+│  ├─ base.json
+│  └─ ...
+└─ assets/
+   ├─ XGR/
+   │  ├─ asset.json
+   │  └─ routes.json
+   └─ <ASSET>/
+      ├─ asset.json
+      └─ routes.json
+
+deployments/
+└─ mainnet/
+   ├─ infrastructure/
+   │  ├─ xgrchain.json
+   │  └─ base.json
+   └─ assets/
+      ├─ XGR.json
+      └─ <ASSET>.json
+```
+
+Desired configuration and observed deployment state must remain separate.
+
+`asset.json` should contain stable asset metadata and canonical representation information. `routes.json` should contain desired route topology. `deployments/.../*.json` should contain generated on-chain addresses, transaction hashes, route IDs and verified observed state.
+
+### Idempotent deployment target
+
+The intended automation target is conceptually:
+
+```bash
+./xgr-interchain deploy-asset \
+  --asset config/assets/ABC/asset.json \
+  --network mainnet
+```
+
+The deployer should:
+
+1. load chain configuration;
+2. verify existing shared infrastructure;
+3. reuse matching existing contracts;
+4. deploy only missing asset-specific routers/adapters;
+5. deploy only missing gateways;
+6. derive and verify route IDs;
+7. persist deployment records;
+8. verify deployed code and bindings;
+9. generate governance proposals;
+10. leave route activation pending until quorum-approved governance is submitted.
+
+Re-running the same deployment should be safe. Correct existing infrastructure should be reported as already present rather than redeployed.
+
+### Existing asset/router reuse during upgrades
+
+Existing Warp Router / token contracts may be retained during a protocol security upgrade when their deployed code and route bindings are understood, the current owner/admin can perform the required security-module transition, token supply and canonical representation remain unchanged, and the new security path is validated before cutover.
+
+Legacy security modules may remain deployed on-chain as historical contracts, but after cutover they must no longer be referenced by the active route.
+
+### Bootstrap possession proofs
+
+Validator bootstrap possession proofs are destination-domain-specific because the signed bootstrap payload includes the destination domain.
+
+Therefore, a proof generated for one RegistryV2 destination must not be reused for another destination. New destination registries require fresh possession proofs from the same validator BLS keys.
