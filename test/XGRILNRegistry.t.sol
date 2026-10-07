@@ -36,6 +36,37 @@ contract XGRILNRegistryTest is Test {
         assertEq(XGRILNProtocol.encodeRouteKey(key), expected);
     }
 
+    function testGovernanceFeeUpdateMatchesGoCanonicalVector() public view {
+        XGRILNProtocol.GovernanceProposal memory proposal =
+            XGRILNProtocol.GovernanceProposal({
+                proposalType: 1,
+                registry: 0x5555555555555555555555555555555555555555,
+                setId: 7,
+                nonce: 12,
+                validUntil: 1900000000,
+                route: XGRILNProtocol.Route({
+                    key: XGRILNProtocol.RouteKey({
+                        sourceChainId: 8453,
+                        sourceDomain: 8453,
+                        destinationDomain: 1643,
+                        routeId: ROUTE_ID
+                    }),
+                    gateway: address(0),
+                    sourceRouter: address(0),
+                    mailbox: address(0),
+                    merkleTreeHook: address(0),
+                    destinationRouter: address(0),
+                    validatorFeeWei: 50_000_000_000_000,
+                    enabled: false
+                })
+            });
+
+        bytes memory expected =
+            hex"5847525f494c4e5f474f5645524e414e43455f56320000000000002105000021050000066baaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa55555555555555555555555555555555555555550000000000000007000000000000000c00000000713fb300010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002d79883d2000";
+
+        assertEq(XGRILNProtocol.encodeGovernanceProposal(proposal), expected);
+    }
+
     function testGovernanceAddsRouteAndAdvancesOnlyItsNonce() public {
         XGRILNProtocol.GovernanceProposal memory proposal = _routeAdd(1);
         registry.applyGovernance(proposal, hex"03", hex"01");
