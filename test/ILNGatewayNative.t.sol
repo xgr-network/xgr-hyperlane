@@ -3,11 +3,15 @@ pragma solidity ^0.8.24;
 
 import {Test} from "forge-std/Test.sol";
 import {ILNGateway} from "../contracts/ILNGateway.sol";
+import {IXGRILNRegistry} from "../contracts/IXGRILNRegistry.sol";
 import {MockILNNativeWarpRouter} from "../contracts/test/MockILNNativeWarpRouter.sol";
+import {MockXGRILNRegistry} from "../contracts/test/MockXGRILNRegistry.sol";
 
 contract ILNGatewayNativeTest is Test {
     uint32 internal constant SOURCE_DOMAIN = 1643;
     uint32 internal constant DESTINATION_DOMAIN = 8453;
+    bytes32 internal constant ROUTE_ID =
+        0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb;
     address internal constant MAILBOX =
         0x3333333333333333333333333333333333333333;
     address internal constant HOOK =
@@ -16,23 +20,36 @@ contract ILNGatewayNativeTest is Test {
         0x5555555555555555555555555555555555555555;
     address internal constant USER = address(0xBEEF);
 
-    function testNativeGatewayForwardsPrincipalAndKeepsNominalFee()
-        public
-    {
+    function testNativeGatewayUsesSharedRouteState() public {
         vm.deal(USER, 10 ether);
 
         MockILNNativeWarpRouter router =
             new MockILNNativeWarpRouter();
+        MockXGRILNRegistry registry =
+            new MockXGRILNRegistry();
 
         ILNGateway gateway = new ILNGateway(
-            SOURCE_DOMAIN,
+            address(registry),
+            ROUTE_ID,
             DESTINATION_DOMAIN,
             address(router),
-            MAILBOX,
-            HOOK,
-            DEST_ROUTER,
-            1,
             false
+        );
+
+        registry.setRoute(
+            DESTINATION_DOMAIN,
+            ROUTE_ID,
+            IXGRILNRegistry.RouteRecord({
+                sourceChainId: uint64(block.chainid),
+                sourceDomain: SOURCE_DOMAIN,
+                gateway: address(gateway),
+                sourceRouter: address(router),
+                mailbox: MAILBOX,
+                merkleTreeHook: HOOK,
+                destinationRouter: DEST_ROUTER,
+                validatorFeeWei: 1,
+                enabled: true
+            })
         );
 
         uint256 amount = 1 ether;
