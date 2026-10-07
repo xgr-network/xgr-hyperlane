@@ -1,14 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-interface IXGRInterchainBLSVerifier {
-    function verify(
-        bytes calldata message,
-        bytes[] calldata publicKeys,
-        bytes calldata signerBitmap,
-        bytes calldata aggregateSignature
-    ) external view returns (bool);
-}
+import {IXGRInterchainBLSVerifier} from "./IXGRInterchainBLSVerifier.sol";
 
 /// @notice Destination-side trust anchor for XGR native interchain membership.
 /// @dev No administrator can mutate membership after bootstrap. Every ADD/REMOVE
@@ -253,6 +246,41 @@ contract XGRInterchainValidatorRegistryV2 {
     function quorumThreshold() public view returns (uint256) {
         uint256 n = activeValidators.length;
         return (2 * n + 2) / 3;
+    }
+
+    /// @notice Verifies an arbitrary XGR Interchain security payload against
+    ///         one historical destination-scoped validator set.
+    /// @dev This keeps membership and quorum authority centralized in this
+    ///      destination registry. Route/asset semantics remain outside it.
+    function verifyQuorum(
+        uint64 requestedSetId,
+        bytes calldata payload,
+        bytes calldata signerBitmap,
+        bytes calldata aggregateSignature
+    ) external view returns (bool) {
+        (
+            address[] memory validators,
+            bytes[] memory keys,
+            uint64 resolvedSetId
+        ) = _getValidatorSetForVerification(requestedSetId);
+
+        if (
+            resolvedSetId != requestedSetId ||
+            validators.length == 0 ||
+            validators.length != keys.length
+        ) return false;
+
+        uint256 threshold = (2 * validators.length + 2) / 3;
+        if (!_bitmapHasQuorum(signerBitmap, validators.length, threshold)) {
+            return false;
+        }
+
+        return verifier.verify(
+            payload,
+            keys,
+            signerBitmap,
+            aggregateSignature
+        );
     }
 
     /// @notice Executes a quorum-approved membership transition.
