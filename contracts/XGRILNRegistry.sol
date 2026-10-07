@@ -2,12 +2,13 @@
 pragma solidity ^0.8.24;
 
 import {IXGRILNRegistry} from "./IXGRILNRegistry.sol";
-import {IXGRILNGovernanceVerifier} from "./IXGRILNGovernanceVerifier.sol";
+import {IXGRInterchainValidatorSetV2} from "./IXGRInterchainValidatorSetV2.sol";
 import {XGRILNProtocol} from "./XGRILNProtocol.sol";
 
 /// @notice Shared source-chain registry for all XGR Interchain v3.1.3 routes.
-/// @dev There is deliberately no owner/admin mutation path. Route mutations
-///      require a completed XGR Interchain governance quorum.
+/// @dev Route governance is authorized by the canonical destination-scoped
+///      Interchain validator registry of THIS chain. Any account may submit an
+///      already-completed governance quorum; the caller has no authority.
 contract XGRILNRegistry is IXGRILNRegistry {
     uint8 private constant PROPOSAL_FEE_UPDATE = 1;
     uint8 private constant PROPOSAL_ROUTE_ADD = 2;
@@ -16,7 +17,7 @@ contract XGRILNRegistry is IXGRILNRegistry {
 
     uint64 public immutable sourceChainId;
     uint32 public immutable sourceDomain;
-    IXGRILNGovernanceVerifier public immutable governanceVerifier;
+    IXGRInterchainValidatorSetV2 public immutable governanceRegistry;
 
     mapping(uint32 => mapping(bytes32 => RouteRecord)) private routes;
     mapping(uint32 => mapping(bytes32 => bool)) private routeExists;
@@ -55,18 +56,29 @@ contract XGRILNRegistry is IXGRILNRegistry {
     constructor(
         uint64 sourceChainId_,
         uint32 sourceDomain_,
-        address governanceVerifier_
+        address governanceRegistry_
     ) {
         if (
             sourceChainId_ == 0 ||
             sourceDomain_ == 0 ||
-            governanceVerifier_ == address(0) ||
+            governanceRegistry_ == address(0) ||
             block.chainid != uint256(sourceChainId_)
+        ) revert InvalidConfiguration();
+
+        IXGRInterchainValidatorSetV2 registry =
+            IXGRInterchainValidatorSetV2(governanceRegistry_);
+
+        // Governance is deliberately local to the chain whose route state is
+        // being mutated. The same RegistryV2 remains the canonical membership
+        // contract used when this chain is an Interchain destination.
+        if (
+            registry.destinationDomain() != sourceDomain_ ||
+            registry.verifier() == address(0)
         ) revert InvalidConfiguration();
 
         sourceChainId = sourceChainId_;
         sourceDomain = sourceDomain_;
-        governanceVerifier = IXGRILNGovernanceVerifier(governanceVerifier_);
+        governanceRegistry = registry;
     }
 
     function getRoute(uint32 destinationDomain, bytes32 routeId)
@@ -114,11 +126,16 @@ contract XGRILNRegistry is IXGRILNRegistry {
         return routeExists[destinationDomain][routeId];
     }
 
+    /// @notice Permissionless execution of a completed governance quorum.
+    /// @dev Typical flow:
+    ///      1. read completed quorum from XGR RPC;
+    ///      2. any operator/validator/relayer submits proposal + bitmap + BLS sig;
+    ///      3. this contract verifies the quorum against the local RegistryV2;
+    ///      4. only then is route state mutated.
     function applyGovernance(
         XGRILNProtocol.GovernanceProposal calldata proposal,
         bytes calldata signerBitmap,
-        bytes calldata aggregateSignature,
-        bytes calldata membershipProof
+        bytes calldata aggregateSignature
     ) external {
         XGRILNProtocol.GovernanceProposal memory p = proposal;
         bytes memory payload = XGRILNProtocol.encodeGovernanceProposal(p);
@@ -129,32 +146,38 @@ contract XGRILNRegistry is IXGRILNRegistry {
             p.route.key.sourceDomain != sourceDomain
         ) revert InvalidProposal();
 
-        if (block.timestamp > p.validUntil) revert GovernanceProposalExpired();
+        if (block.timestamp > p.validUntil) {
+            revert GovernanceProposalExpired();
+        }
 
         uint32 destinationDomain = p.route.key.destinationDomain;
         bytes32 routeId = p.route.key.routeId;
         uint64 currentNonce = routeGovernanceNonce[destinationDomain][routeId];
         if (currentNonce == type(uint64).max) revert InvalidProposal();
+
         uint64 expectedNonce = currentNonce + 1;
         if (p.nonce != expectedNonce) {
             revert StaleGovernanceNonce(expectedNonce, p.nonce);
         }
 
         if (
-            !governanceVerifier.verifyGovernanceQuorum(
-                destinationDomain,
+            !governanceRegistry.verifyQuorum(
                 p.setId,
                 payload,
                 signerBitmap,
-                aggregateSignature,
-                membershipProof
+                aggregateSignature
             )
         ) revert InvalidGovernanceQuorum();
 
         if (p.proposalType == PROPOSAL_ROUTE_ADD) {
             _applyRouteAdd(p.route, p.nonce);
         } else if (p.proposalType == PROPOSAL_FEE_UPDATE) {
-            _applyFeeUpdate(destinationDomain, routeId, p.route.validatorFeeWei, p.nonce);
+            _applyFeeUpdate(
+                destinationDomain,
+                routeId,
+                p.route.validatorFeeWei,
+                p.nonce
+            );
         } else if (p.proposalType == PROPOSAL_ROUTE_ENABLE) {
             _applyRouteState(destinationDomain, routeId, true, p.nonce);
         } else if (p.proposalType == PROPOSAL_ROUTE_DISABLE) {
@@ -172,7 +195,9 @@ contract XGRILNRegistry is IXGRILNRegistry {
     ) private {
         uint32 destinationDomain = route.key.destinationDomain;
         bytes32 routeId = route.key.routeId;
-        if (routeExists[destinationDomain][routeId]) revert RouteAlreadyExists();
+        if (routeExists[destinationDomain][routeId]) {
+            revert RouteAlreadyExists();
+        }
 
         routes[destinationDomain][routeId] = RouteRecord({
             sourceChainId: route.key.sourceChainId,
@@ -204,9 +229,19 @@ contract XGRILNRegistry is IXGRILNRegistry {
         uint256 validatorFeeWei,
         uint64 nonce
     ) private {
-        if (!routeExists[destinationDomain][routeId]) revert RouteNotFound();
-        routes[destinationDomain][routeId].validatorFeeWei = validatorFeeWei;
-        emit RouteFeeUpdated(destinationDomain, routeId, validatorFeeWei, nonce);
+        if (!routeExists[destinationDomain][routeId]) {
+            revert RouteNotFound();
+        }
+
+        routes[destinationDomain][routeId].validatorFeeWei =
+            validatorFeeWei;
+
+        emit RouteFeeUpdated(
+            destinationDomain,
+            routeId,
+            validatorFeeWei,
+            nonce
+        );
     }
 
     function _applyRouteState(
@@ -215,8 +250,16 @@ contract XGRILNRegistry is IXGRILNRegistry {
         bool enabled,
         uint64 nonce
     ) private {
-        if (!routeExists[destinationDomain][routeId]) revert RouteNotFound();
+        if (!routeExists[destinationDomain][routeId]) {
+            revert RouteNotFound();
+        }
+
         routes[destinationDomain][routeId].enabled = enabled;
-        emit RouteStateUpdated(destinationDomain, routeId, enabled, nonce);
+        emit RouteStateUpdated(
+            destinationDomain,
+            routeId,
+            enabled,
+            nonce
+        );
     }
 }
