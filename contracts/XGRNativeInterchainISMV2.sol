@@ -2,7 +2,7 @@
 pragma solidity ^0.8.24;
 
 import {IXGRInterchainValidatorSetV2} from "./IXGRInterchainValidatorSetV2.sol";
-import {IXGRInterchainBLSVerifier} from "./XGRInterchainValidatorRegistry.sol";
+import {IXGRInterchainBLSVerifier} from "./IXGRInterchainBLSVerifier.sol";
 
 /// @notice Hyperlane ISM for messages from a configured external origin, secured by native XGR
 ///         interchain BLS validator subset.
