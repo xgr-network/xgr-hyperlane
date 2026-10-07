@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {IXGRInterchainBLSVerifier} from "./XGRInterchainValidatorRegistry.sol";
+import {IXGRInterchainBLSVerifier} from "./IXGRInterchainBLSVerifier.sol";
 
 /// @notice EIP-2537 verifier for XGR's BLS12-381 MinPk proof-of-possession signature scheme.
 /// @dev Public keys are 128-byte uncompressed EIP-2537 G1 points and signatures are
