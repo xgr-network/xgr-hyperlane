@@ -587,7 +587,7 @@ contract XGRInterchainValidatorRegistryV2 {
             uint256 bitIndex = i & 7;
             if (
                 byteFromEnd < bitmap.length &&
-                (uint8(bitmap[bitmap.length - 1 - byteFromEnd]) & uint8(1 << bitIndex)) != 0
+                (uint8(bitmap[bitmap.length - 1 - byteFromEnd]) & (uint8(1) << bitIndex)) != 0
             ) {
                 count++;
             }
@@ -599,7 +599,7 @@ contract XGRInterchainValidatorRegistryV2 {
             uint256 bitIndex = i & 7;
             if (
                 byteFromEnd < bitmap.length &&
-                (uint8(bitmap[bitmap.length - 1 - byteFromEnd]) & uint8(1 << bitIndex)) != 0
+                (uint8(bitmap[bitmap.length - 1 - byteFromEnd]) & (uint8(1) << bitIndex)) != 0
             ) return false;
         }
 
