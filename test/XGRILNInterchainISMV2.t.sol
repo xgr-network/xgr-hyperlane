@@ -9,6 +9,12 @@ import {MockXGRInterchainBLSVerifier} from "../contracts/test/MockXGRInterchainB
 contract XGRILNInterchainISMV2Test is Test {
     XGRILNInterchainISMV2 internal ism;
 
+    uint64 internal constant SOURCE_CHAIN_ID = 8453;
+    uint32 internal constant SOURCE_DOMAIN = 8453;
+    uint32 internal constant DESTINATION_DOMAIN = 1643;
+    bytes32 internal constant ROUTE_ID =
+        0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa;
+
     address internal constant SOURCE_REGISTRY =
         0x1010101010101010101010101010101010101010;
     address internal constant SOURCE_GATEWAY =
@@ -42,7 +48,7 @@ contract XGRILNInterchainISMV2Test is Test {
         XGRInterchainValidatorRegistryV2 registry =
             new XGRInterchainValidatorRegistryV2{value: 3 ether}(
                 1643,
-                1643,
+                DESTINATION_DOMAIN,
                 address(verifier),
                 1,
                 1 ether,
@@ -53,32 +59,34 @@ contract XGRILNInterchainISMV2Test is Test {
                 proofs
             );
 
-        ism = new XGRILNInterchainISMV2(
-            address(registry),
-            8453,
-            8453,
+        ism = new XGRILNInterchainISMV2(address(registry));
+    }
+
+    function testMessageSpecificRouteAuthorizationVerifies() public view {
+        bytes memory message = _message();
+        bytes32 messageId = keccak256(message);
+        bytes32[32] memory proof = _singleLeafProof();
+        bytes32 root = _branchRoot(messageId, proof, 0);
+
+        bytes memory metadata = abi.encode(
+            uint32(0),
+            proof,
+            SOURCE_CHAIN_ID,
+            SOURCE_DOMAIN,
+            DESTINATION_DOMAIN,
+            ROUTE_ID,
+            uint64(1),
+            uint64(123456),
             SOURCE_REGISTRY,
             SOURCE_GATEWAY,
             SOURCE_ROUTER,
             SOURCE_MAILBOX,
             SOURCE_HOOK,
-            DEST_ROUTER
-        );
-    }
-
-    function testMessageSpecificAuthorizationVerifies() public view {
-        bytes memory message = _message();
-        bytes32 messageId = keccak256(message);
-        bytes32[32] memory proof = _singleLeafProof();
-
-        bytes memory metadata = abi.encode(
-            uint32(0),
-            proof,
-            uint32(0),
-            uint64(1),
-            uint64(123456),
+            DEST_ROUTER,
             uint256(1000),
             messageId,
+            root,
+            uint32(0),
             hex"03",
             _bytes(96, 0x77)
         );
@@ -89,15 +97,27 @@ contract XGRILNInterchainISMV2Test is Test {
     function testDifferentAuthorizedMessageIdRejected() public view {
         bytes memory message = _message();
         bytes32[32] memory proof = _singleLeafProof();
+        bytes32 root = _branchRoot(keccak256(message), proof, 0);
 
         bytes memory metadata = abi.encode(
             uint32(0),
             proof,
-            uint32(0),
+            SOURCE_CHAIN_ID,
+            SOURCE_DOMAIN,
+            DESTINATION_DOMAIN,
+            ROUTE_ID,
             uint64(1),
             uint64(123456),
+            SOURCE_REGISTRY,
+            SOURCE_GATEWAY,
+            SOURCE_ROUTER,
+            SOURCE_MAILBOX,
+            SOURCE_HOOK,
+            DEST_ROUTER,
             uint256(1000),
             bytes32(uint256(0xDEAD)),
+            root,
+            uint32(0),
             hex"03",
             _bytes(96, 0x77)
         );
@@ -105,25 +125,63 @@ contract XGRILNInterchainISMV2Test is Test {
         assertFalse(ism.verify(metadata, message));
     }
 
-    function testWrongWarpSenderRejected() public view {
-        bytes memory message = abi.encodePacked(
-            uint8(3),
-            uint32(7),
-            uint32(8453),
-            bytes32(uint256(uint160(address(0x9999)))),
-            uint32(1643),
-            bytes32(uint256(uint160(DEST_ROUTER))),
-            bytes("iln")
-        );
+    function testWrongRouteRouterBindingRejected() public view {
+        bytes memory message = _message();
+        bytes32 messageId = keccak256(message);
+        bytes32[32] memory proof = _singleLeafProof();
+        bytes32 root = _branchRoot(messageId, proof, 0);
 
         bytes memory metadata = abi.encode(
             uint32(0),
-            _singleLeafProof(),
-            uint32(0),
+            proof,
+            SOURCE_CHAIN_ID,
+            SOURCE_DOMAIN,
+            DESTINATION_DOMAIN,
+            ROUTE_ID,
             uint64(1),
             uint64(123456),
+            SOURCE_REGISTRY,
+            SOURCE_GATEWAY,
+            address(0x9999),
+            SOURCE_MAILBOX,
+            SOURCE_HOOK,
+            DEST_ROUTER,
             uint256(1000),
-            keccak256(message),
+            messageId,
+            root,
+            uint32(0),
+            hex"03",
+            _bytes(96, 0x77)
+        );
+
+        assertFalse(ism.verify(metadata, message));
+    }
+
+    function testWrongDestinationRejected() public view {
+        bytes memory message = _message();
+        bytes32 messageId = keccak256(message);
+        bytes32[32] memory proof = _singleLeafProof();
+        bytes32 root = _branchRoot(messageId, proof, 0);
+
+        bytes memory metadata = abi.encode(
+            uint32(0),
+            proof,
+            SOURCE_CHAIN_ID,
+            SOURCE_DOMAIN,
+            uint32(42161),
+            ROUTE_ID,
+            uint64(1),
+            uint64(123456),
+            SOURCE_REGISTRY,
+            SOURCE_GATEWAY,
+            SOURCE_ROUTER,
+            SOURCE_MAILBOX,
+            SOURCE_HOOK,
+            DEST_ROUTER,
+            uint256(1000),
+            messageId,
+            root,
+            uint32(0),
             hex"03",
             _bytes(96, 0x77)
         );
@@ -135,11 +193,11 @@ contract XGRILNInterchainISMV2Test is Test {
         return abi.encodePacked(
             uint8(3),
             uint32(7),
-            uint32(8453),
+            SOURCE_DOMAIN,
             bytes32(uint256(uint160(SOURCE_ROUTER))),
-            uint32(1643),
+            DESTINATION_DOMAIN,
             bytes32(uint256(uint160(DEST_ROUTER))),
-            bytes("iln")
+            bytes("iln-v3.1.3")
         );
     }
 
@@ -152,6 +210,22 @@ contract XGRILNInterchainISMV2Test is Test {
         for (uint256 i = 0; i < 32; i++) {
             proof[i] = zero;
             zero = keccak256(abi.encodePacked(zero, zero));
+        }
+    }
+
+    function _branchRoot(
+        bytes32 item,
+        bytes32[32] memory branch,
+        uint256 index
+    ) internal pure returns (bytes32 current) {
+        current = item;
+        for (uint256 i = 0; i < 32; i++) {
+            bytes32 sibling = branch[i];
+            if (((index >> i) & 1) == 1) {
+                current = keccak256(abi.encodePacked(sibling, current));
+            } else {
+                current = keccak256(abi.encodePacked(current, sibling));
+            }
         }
     }
 
