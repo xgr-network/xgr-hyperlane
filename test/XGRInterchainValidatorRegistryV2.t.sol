@@ -143,6 +143,29 @@ contract XGRInterchainValidatorRegistryV2Test is Test {
         );
     }
 
+    function testGenericQuorumVerificationUsesHistoricalSet() public {
+        verifier = new MockXGRInterchainBLSVerifier();
+        XGRInterchainValidatorRegistryV2 registry = _deploy(FORMAT_COMPRESSED);
+
+        assertTrue(
+            registry.verifyQuorum(
+                1,
+                bytes("xgr-iln-v3.1.3-payload"),
+                hex"03",
+                _bytes(96, 0x66)
+            )
+        );
+
+        assertFalse(
+            registry.verifyQuorum(
+                999,
+                bytes("xgr-iln-v3.1.3-payload"),
+                hex"03",
+                _bytes(96, 0x66)
+            )
+        );
+    }
+
     function _deploy(uint8 format)
         internal
         returns (XGRInterchainValidatorRegistryV2 registry)
