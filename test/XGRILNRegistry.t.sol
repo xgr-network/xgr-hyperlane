@@ -4,7 +4,7 @@ pragma solidity ^0.8.24;
 import {Test} from "forge-std/Test.sol";
 import {XGRILNProtocol} from "../contracts/XGRILNProtocol.sol";
 import {XGRILNRegistry} from "../contracts/XGRILNRegistry.sol";
-import {MockXGRILNGovernanceVerifier} from "../contracts/test/MockXGRILNGovernanceVerifier.sol";
+import {MockLocalGovernanceRegistry} from "../contracts/test/MockLocalGovernanceRegistry.sol";
 
 contract XGRILNRegistryTest is Test {
     uint64 internal constant SOURCE_CHAIN = 8453;
@@ -13,12 +13,12 @@ contract XGRILNRegistryTest is Test {
     bytes32 internal constant ROUTE_ID =
         0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa;
 
-    MockXGRILNGovernanceVerifier internal verifier;
+    MockLocalGovernanceRegistry internal verifier;
     XGRILNRegistry internal registry;
 
     function setUp() public {
         vm.chainId(SOURCE_CHAIN);
-        verifier = new MockXGRILNGovernanceVerifier();
+        verifier = new MockLocalGovernanceRegistry(SOURCE_DOMAIN);
         registry = new XGRILNRegistry(SOURCE_CHAIN, SOURCE_DOMAIN, address(verifier));
     }
 
@@ -38,7 +38,7 @@ contract XGRILNRegistryTest is Test {
 
     function testGovernanceAddsRouteAndAdvancesOnlyItsNonce() public {
         XGRILNProtocol.GovernanceProposal memory proposal = _routeAdd(1);
-        registry.applyGovernance(proposal, hex"03", hex"01", hex"");
+        registry.applyGovernance(proposal, hex"03", hex"01");
 
         assertEq(registry.governanceNonce(DESTINATION_DOMAIN, ROUTE_ID), 1);
         assertEq(
@@ -73,7 +73,7 @@ contract XGRILNRegistryTest is Test {
     }
 
     function testRejectsStaleRouteNonce() public {
-        registry.applyGovernance(_routeAdd(1), hex"03", hex"01", hex"");
+        registry.applyGovernance(_routeAdd(1), hex"03", hex"01");
 
         XGRILNProtocol.GovernanceProposal memory update = _feeUpdate(1, 25);
         vm.expectRevert(
@@ -83,12 +83,12 @@ contract XGRILNRegistryTest is Test {
                 uint64(1)
             )
         );
-        registry.applyGovernance(update, hex"03", hex"01", hex"");
+        registry.applyGovernance(update, hex"03", hex"01");
     }
 
     function testFeeUpdateIsRouteSpecific() public {
-        registry.applyGovernance(_routeAdd(1), hex"03", hex"01", hex"");
-        registry.applyGovernance(_feeUpdate(2, 25), hex"03", hex"01", hex"");
+        registry.applyGovernance(_routeAdd(1), hex"03", hex"01");
+        registry.applyGovernance(_feeUpdate(2, 25), hex"03", hex"01");
 
         (,,,,,,, uint256 fee,) = registry.getRoute(DESTINATION_DOMAIN, ROUTE_ID);
         assertEq(fee, 25);
@@ -98,7 +98,7 @@ contract XGRILNRegistryTest is Test {
     function testRejectsInvalidGovernanceQuorum() public {
         verifier.setResult(false);
         vm.expectRevert(XGRILNRegistry.InvalidGovernanceQuorum.selector);
-        registry.applyGovernance(_routeAdd(1), hex"03", hex"01", hex"");
+        registry.applyGovernance(_routeAdd(1), hex"03", hex"01");
     }
 
     function _routeAdd(uint64 nonce)
