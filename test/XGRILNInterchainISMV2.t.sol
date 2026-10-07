@@ -4,6 +4,7 @@ pragma solidity ^0.8.24;
 import {Test} from "forge-std/Test.sol";
 import {XGRInterchainValidatorRegistryV2} from "../contracts/XGRInterchainValidatorRegistryV2.sol";
 import {XGRILNInterchainISMV2} from "../contracts/XGRILNInterchainISMV2.sol";
+import {XGRILNProtocol} from "../contracts/XGRILNProtocol.sol";
 import {MockXGRInterchainBLSVerifier} from "../contracts/test/MockXGRInterchainBLSVerifier.sol";
 
 contract XGRILNInterchainISMV2Test is Test {
@@ -60,6 +61,35 @@ contract XGRILNInterchainISMV2Test is Test {
             );
 
         ism = new XGRILNInterchainISMV2(address(registry));
+    }
+
+    function testCheckpointPayloadMatchesGoCanonicalVector() public pure {
+        XGRILNProtocol.CheckpointPayload memory payload =
+            XGRILNProtocol.CheckpointPayload({
+                sourceChainId: 8453,
+                sourceDomain: 8453,
+                destinationDomain: 1643,
+                routeId: ROUTE_ID,
+                setId: 9,
+                sourceBlockNumber: 123456,
+                registry: 0x5555555555555555555555555555555555555555,
+                gateway: 0x1111111111111111111111111111111111111111,
+                sourceRouter: 0x6666666666666666666666666666666666666666,
+                mailbox: 0x2222222222222222222222222222222222222222,
+                merkleTreeHook: 0x3333333333333333333333333333333333333333,
+                destinationRouter: 0x4444444444444444444444444444444444444444,
+                validatorFeeWei: 12345,
+                authorizedMessageId:
+                    0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb,
+                root:
+                    0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa,
+                index: 17
+            });
+
+        bytes memory expected =
+            hex"5847525f494c4e5f434845434b504f494e545f56320000000000002105000021050000066baaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0000000000000009000000000001e2405555555555555555555555555555555555555555111111111111111111111111111111111111111166666666666666666666666666666666666666662222222222222222222222222222222222222222333333333333333333333333333333333333333344444444444444444444444444444444444444440000000000000000000000000000000000000000000000000000000000003039bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa00000011";
+
+        assertEq(XGRILNProtocol.encodeCheckpointPayload(payload), expected);
     }
 
     function testMessageSpecificRouteAuthorizationVerifies() public view {
