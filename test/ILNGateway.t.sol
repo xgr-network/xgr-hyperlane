@@ -3,14 +3,19 @@ pragma solidity ^0.8.24;
 
 import {Test} from "forge-std/Test.sol";
 import {ILNGateway} from "../contracts/ILNGateway.sol";
+import {IXGRILNRegistry} from "../contracts/IXGRILNRegistry.sol";
 import {MockILNWarpRouter} from "../contracts/test/MockILNWarpRouter.sol";
+import {MockXGRILNRegistry} from "../contracts/test/MockXGRILNRegistry.sol";
 
 contract ILNGatewayTest is Test {
     ILNGateway internal gateway;
     MockILNWarpRouter internal router;
+    MockXGRILNRegistry internal registry;
 
     uint32 internal constant SOURCE_DOMAIN = 8453;
     uint32 internal constant DESTINATION_DOMAIN = 1643;
+    bytes32 internal constant ROUTE_ID =
+        0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa;
     address internal constant MAILBOX =
         0x3333333333333333333333333333333333333333;
     address internal constant HOOK =
@@ -23,15 +28,29 @@ contract ILNGatewayTest is Test {
         vm.deal(USER, 10 ether);
 
         router = new MockILNWarpRouter();
+        registry = new MockXGRILNRegistry();
         gateway = new ILNGateway(
-            SOURCE_DOMAIN,
+            address(registry),
+            ROUTE_ID,
             DESTINATION_DOMAIN,
             address(router),
-            MAILBOX,
-            HOOK,
-            DEST_ROUTER,
-            1,
             false
+        );
+
+        registry.setRoute(
+            DESTINATION_DOMAIN,
+            ROUTE_ID,
+            IXGRILNRegistry.RouteRecord({
+                sourceChainId: uint64(block.chainid),
+                sourceDomain: SOURCE_DOMAIN,
+                gateway: address(gateway),
+                sourceRouter: address(router),
+                mailbox: MAILBOX,
+                merkleTreeHook: HOOK,
+                destinationRouter: DEST_ROUTER,
+                validatorFeeWei: 1,
+                enabled: true
+            })
         );
 
         router.mint(USER, 10 ether);
@@ -39,35 +58,16 @@ contract ILNGatewayTest is Test {
         router.approve(address(gateway), type(uint256).max);
     }
 
-    function testGatewayIsItsOwnCanonicalRegistry() public view {
-        assertEq(gateway.ilnRegistry(), address(gateway));
-
-        (
-            uint64 sourceChainId,
-            uint32 sourceDomain,
-            address routeGateway,
-            address sourceRouter,
-            address mailbox,
-            address hook,
-            address destinationRouter,
-            uint256 fee,
-            bool enabled
-        ) = gateway.getRoute(DESTINATION_DOMAIN);
-
-        assertEq(sourceChainId, uint64(block.chainid));
-        assertEq(sourceDomain, SOURCE_DOMAIN);
-        assertEq(routeGateway, address(gateway));
-        assertEq(sourceRouter, address(router));
-        assertEq(mailbox, MAILBOX);
-        assertEq(hook, HOOK);
-        assertEq(destinationRouter, DEST_ROUTER);
-        assertEq(fee, 1);
-        assertTrue(enabled);
+    function testGatewayUsesSharedCanonicalRegistry() public view {
+        assertEq(address(gateway.ilnRegistry()), address(registry));
+        assertEq(gateway.routeId(), ROUTE_ID);
+        assertEq(gateway.mailbox(), MAILBOX);
+        assertEq(gateway.merkleTreeHook(), HOOK);
+        assertEq(gateway.destinationRouter(), DEST_ROUTER);
+        assertEq(gateway.validatorFeeWei(), 1);
     }
 
-    function testSyntheticBridgeEscrowsNominalFeeWithNoTokenQuote()
-        public
-    {
+    function testSyntheticBridgeEscrowsCanonicalRouteFee() public {
         uint256 amount = 1 ether;
         bytes32 recipient =
             bytes32(uint256(uint160(address(0xCAFE))));
@@ -105,49 +105,49 @@ contract ILNGatewayTest is Test {
         );
     }
 
-    function testSyntheticPrincipalEchoQuoteAccepted() public {
-        uint256 amount = 1 ether;
-        router.setSyntheticQuoteAmount(amount);
-
-        bytes32 recipient =
-            bytes32(uint256(uint160(address(0xCAFE))));
-
-        (, , uint256 totalNative, uint256 totalToken) =
-            gateway.quoteILN(
-                DESTINATION_DOMAIN,
-                recipient,
-                amount
-            );
-
-        assertEq(totalToken, amount);
-
-        vm.prank(USER);
-        gateway.bridge{value: totalNative}(
+    function testDisabledRouteRejected() public {
+        registry.setRoute(
             DESTINATION_DOMAIN,
-            recipient,
-            amount
+            ROUTE_ID,
+            IXGRILNRegistry.RouteRecord({
+                sourceChainId: uint64(block.chainid),
+                sourceDomain: SOURCE_DOMAIN,
+                gateway: address(gateway),
+                sourceRouter: address(router),
+                mailbox: MAILBOX,
+                merkleTreeHook: HOOK,
+                destinationRouter: DEST_ROUTER,
+                validatorFeeWei: 1,
+                enabled: false
+            })
         );
 
-        assertEq(router.balanceOf(USER), 9 ether);
-    }
-
-    function testSyntheticExtraTokenFeeRejected() public {
-        uint256 amount = 1 ether;
-        router.setSyntheticQuoteAmount(amount + 1);
-
-        bytes32 recipient =
-            bytes32(uint256(uint160(address(0xCAFE))));
-
-        vm.expectRevert(ILNGateway.UnsupportedWarpFee.selector);
+        vm.expectRevert(ILNGateway.InvalidRoute.selector);
         gateway.quoteILN(
             DESTINATION_DOMAIN,
-            recipient,
-            amount
+            bytes32(uint256(uint160(address(0xCAFE)))),
+            1 ether
         );
     }
 
-    function testWrongDestinationRejected() public {
+    function testWrongGatewayBindingRejected() public {
+        registry.setRoute(
+            DESTINATION_DOMAIN,
+            ROUTE_ID,
+            IXGRILNRegistry.RouteRecord({
+                sourceChainId: uint64(block.chainid),
+                sourceDomain: SOURCE_DOMAIN,
+                gateway: address(0x9999),
+                sourceRouter: address(router),
+                mailbox: MAILBOX,
+                merkleTreeHook: HOOK,
+                destinationRouter: DEST_ROUTER,
+                validatorFeeWei: 1,
+                enabled: true
+            })
+        );
+
         vm.expectRevert(ILNGateway.InvalidRoute.selector);
-        gateway.getRoute(1);
+        gateway.validatorFeeWei();
     }
 }
