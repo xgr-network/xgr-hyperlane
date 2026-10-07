@@ -90,7 +90,7 @@ contract XGRInterchainBLSVerifier is IXGRInterchainBLSVerifier {
         uint256 byteFromEnd = index >> 3;
         if (byteFromEnd >= bitmap.length) return false;
         uint256 bitIndex = index & 7;
-        return (uint8(bitmap[bitmap.length - 1 - byteFromEnd]) & uint8(1 << bitIndex)) != 0;
+        return (uint8(bitmap[bitmap.length - 1 - byteFromEnd]) & (uint8(1) << bitIndex)) != 0;
     }
 
     function _hashToG2(bytes calldata message) internal view returns (bool, bytes memory) {
