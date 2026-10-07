@@ -29,4 +29,11 @@ interface IXGRInterchainValidatorSetV2 {
 
     function quorumThreshold() external view returns (uint256);
     function validatorSetCommitment(uint64 setId) external view returns (bytes32);
+
+    function verifyQuorum(
+        uint64 requestedSetId,
+        bytes calldata payload,
+        bytes calldata signerBitmap,
+        bytes calldata aggregateSignature
+    ) external view returns (bool);
 }
