@@ -37,6 +37,11 @@ contract ILNGatewayTest is Test {
             false
         );
 
+        address[] memory feeValidators = new address[](2);
+        feeValidators[0] = address(0x101);
+        feeValidators[1] = address(0x202);
+        gateway.feeVault().updateRecipients(1, 1, feeValidators, hex"01", hex"01");
+
         registry.setRoute(
             DESTINATION_DOMAIN,
             ROUTE_ID,
@@ -98,7 +103,8 @@ contract ILNGatewayTest is Test {
 
         assertTrue(messageId != bytes32(0));
         assertEq(router.balanceOf(USER), 9 ether);
-        assertEq(address(gateway).balance, validatorFee);
+        assertEq(address(gateway).balance, 0);
+        assertEq(address(gateway.feeVault()).balance, validatorFee);
         assertEq(
             gateway.totalValidatorFeesEscrowedWei(),
             validatorFee
