@@ -200,6 +200,25 @@ const destinationMailbox = new Contract(
 const lower = (value) => String(value).toLowerCase();
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const observedReady = new Set();
+const requestedQuorumAt = new Map();
+// The relayer is an optional client of the same public first-time/recovery
+// quorum RPC used by independent users. Bounded retries are advisory only.
+async function hintCurrentQuorum(id, operation) {
+  const last = requestedQuorumAt.get(id) ?? 0;
+  if (Date.now() - last < 30000) return;
+  requestedQuorumAt.set(id, Date.now());
+  try {
+    await attestationProvider.send("xgr_requestILNQuorum", [
+      ATTESTATION_ROUTE, id, Number(operation.sourceBlockNumber),
+    ]);
+  } catch (error) {
+    console.warn(JSON.stringify({
+      event: "iln_quorum_request_unavailable",
+      messageId: id,
+      reason: String(error),
+    }));
+  }
+}
 
 function validateState(state) {
   if (!Number.isSafeInteger(state.nextBlock) || state.nextBlock < 1) {
@@ -620,6 +639,7 @@ async function relayAvailable(state) {
       continue;
     }
 
+    await hintCurrentQuorum(id, operation);
     const attestation = await getAttestation(id, operation);
     if (!attestation) continue;
 
