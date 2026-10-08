@@ -12,6 +12,8 @@ contract MockLocalGovernanceRegistry {
         verifier = address(this);
     }
 
+    function setSetId(uint64 value) external { setId = value; }
+
     function setResult(bool value) external {
         result = value;
     }
