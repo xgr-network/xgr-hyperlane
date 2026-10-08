@@ -109,7 +109,7 @@ export function validateCatalog(catalog) {
       }
     }
   }
-  const names = new Set();
+  const names = new Set(), usedRouteKeys = new Set();
   check(Object.keys(assets).length > 0, "no asset configurations");
   for (const [id, asset] of Object.entries(assets)) {
     const p = "config/assets/" + id;
@@ -134,6 +134,12 @@ export function validateCatalog(catalog) {
         : representation.assetAddress === null || isAddress(representation.assetAddress),
         p + ": representation address must be a valid ERC-20 or null for native");
     }
+    const canonicalRepresentation = (metadata.representations || []).find(
+      (item) => item.chain === metadata.canonical?.chain
+    );
+    check(canonicalRepresentation &&
+      canonicalRepresentation.representation === metadata.canonical.representation,
+      p + ": canonical asset representation differs from configured chain representation");
     check(routes.schemaVersion === 1 && routes.kind === "asset-routes" &&
       routes.asset === id && routes.network === "mainnet" && routes.protocol === "ILN-v3.1.4",
       p + ": invalid routes manifest");
@@ -149,6 +155,11 @@ export function validateCatalog(catalog) {
         p + ": invalid route chain endpoints " + route.name);
       check(["pending-governance", "quorum-activated"].includes(route.activation),
         p + ": unknown route activation " + route.name);
+      if (isHash(route.routeId)) {
+        const key=route.sourceChain+":"+route.destinationChain+":"+route.routeId.toLowerCase();
+        check(!usedRouteKeys.has(key), p + ": duplicate canonical ILN route ID " + key);
+        usedRouteKeys.add(key);
+      }
       // Before deployment a route may be fully unspecified. Once proposed,
       // route ID and fee are an inseparable, explicit pair. Governance alone
       // can activate it; JSON cannot.
