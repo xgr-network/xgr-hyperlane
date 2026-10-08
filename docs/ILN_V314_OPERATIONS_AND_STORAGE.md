@@ -44,3 +44,13 @@ Maintenance runs in a separate Go worker, currently every five minutes, checking
 - Confirm no existing production router, contract, RPC or v3.1.3 state migration was unexpectedly overwritten.
 
 Do not merge to production or assume `xgr-node/XGR3.0` is synchronized merely because `xgrchain/feature/interchain-v3.1.4` tests pass.
+
+### Validator disk diagnostics
+
+Use the read-only node command on each validator (works without starting the worker):
+
+```bash
+xgrchain ibft interchain storage-status --data-dir /path/to/node-data
+```
+
+The report counts total on-disk interchain files and bytes, separated into transfer attestations, local BLS votes, queued public quorum hints, governance and other interchain state. It is not a substitute for monitoring free disk space on the host; alert on remaining filesystem capacity as well as trends in pending versus delivered messages. The new cleanup schedule is five minutes, at most 64 old transfer archives inspected per cycle. Already delivered archive removal is deliberately conservative and only eventual, never an immediate consensus action.
