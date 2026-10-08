@@ -126,6 +126,17 @@ contract XGRILNRegistryTest is Test {
         assertEq(registry.governanceNonce(DESTINATION_DOMAIN, ROUTE_ID), 2);
     }
 
+    function testRejectsHistoricalQuorumAfterValidatorSetRotation() public {
+        // A completed quorum for set 7 must not control mutable route
+        // governance after a membership transition to set 8.
+        XGRILNProtocol.GovernanceProposal memory oldProposal = _routeAdd(1);
+        verifier.setSetId(8);
+        vm.expectRevert(XGRILNRegistry.InvalidGovernanceQuorum.selector);
+        registry.applyGovernance(oldProposal, hex"03", hex"01");
+        assertFalse(registry.exists(DESTINATION_DOMAIN, ROUTE_ID));
+        assertEq(registry.governanceNonce(DESTINATION_DOMAIN, ROUTE_ID), 0);
+    }
+
     function testRejectsInvalidGovernanceQuorum() public {
         verifier.setResult(false);
         vm.expectRevert(XGRILNRegistry.InvalidGovernanceQuorum.selector);
