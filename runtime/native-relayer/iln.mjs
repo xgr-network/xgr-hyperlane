@@ -1,14 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
 import {
-  AbiCoder,
   Contract,
   JsonRpcProvider,
   Wallet,
   getAddress,
   getBytes,
   keccak256,
-  solidityPacked,
 } from "ethers";
 import {
   addLeaf,
@@ -17,6 +15,7 @@ import {
   snapshotNodes,
 } from "./merkle.mjs";
 import { wrapAggregationMetadata } from "./metadata.mjs";
+import { ILN_OPERATION_EVENT, requireRouteId, encodeCheckpointPayloadV2, encodeISMMetadataV313 } from "./iln-v313.mjs";
 
 const env = (name, fallback = undefined) => {
   const value = process.env[name] ?? fallback;
@@ -40,6 +39,7 @@ const ORIGIN_DOMAIN = Number(env("ORIGIN_DOMAIN"));
 const ORIGIN_MAILBOX = getAddress(env("ORIGIN_MAILBOX"));
 const ORIGIN_MERKLE_TREE_HOOK = getAddress(env("ORIGIN_MERKLE_TREE_HOOK"));
 const ORIGIN_ILN_REGISTRY = getAddress(env("ORIGIN_ILN_REGISTRY"));
+const ROUTE_ID = requireRouteId(env("ROUTE_ID"));
 const ORIGIN_ILN_GATEWAY = getAddress(env("ORIGIN_ILN_GATEWAY"));
 const ORIGIN_WARP_ROUTER = getAddress(env("ORIGIN_WARP_ROUTER"));
 
@@ -184,7 +184,7 @@ const hookAbi = [
   },
 ];
 const gatewayAbi = [
-  "event ILNOperation(bytes32 indexed messageId,uint32 indexed destinationDomain,uint256 validatorFeeWei)",
+  ILN_OPERATION_EVENT,
   "function activationBlock() view returns (uint256)",
 ];
 
@@ -196,7 +196,6 @@ const destinationMailbox = new Contract(
   mailboxAbi,
   wallet,
 );
-const coder = AbiCoder.defaultAbiCoder();
 
 const lower = (value) => String(value).toLowerCase();
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -255,7 +254,11 @@ async function bootstrapState() {
   const snapshotBlock = startBlock - 1;
   const { branch, count } = await readTreeSnapshot(snapshotBlock);
   return validateState({
-    version: 1,
+    version: 2,
+    routeId: ROUTE_ID,
+    originChainId: String(ORIGIN_CHAIN_ID),
+    destinationDomain: DESTINATION_DOMAIN,
+    originGateway: ORIGIN_ILN_GATEWAY,
     nextBlock: startBlock,
     snapshotBlock,
     snapshotCount: count,
@@ -270,8 +273,8 @@ async function bootstrapState() {
 async function loadState() {
   try {
     const state = JSON.parse(fs.readFileSync(STATE_PATH, "utf8"));
-    if (state.version !== 1) {
-      throw new Error("unsupported ILN relayer state version");
+    if (state.version !== 2 || state.routeId !== ROUTE_ID || state.originChainId !== String(ORIGIN_CHAIN_ID) || state.destinationDomain !== DESTINATION_DOMAIN || lower(state.originGateway) !== lower(ORIGIN_ILN_GATEWAY)) {
+      throw new Error("ILN relayer state version or route identity mismatch; use a fresh v3.1.3 state path");
     }
     return validateState(state);
   } catch (err) {
@@ -374,6 +377,7 @@ async function scanOrigin(state) {
     ]);
 
     for (const event of operations) {
+      if (lower(event.args.routeId) !== ROUTE_ID) continue;
       const destinationDomain = Number(event.args.destinationDomain);
       if (destinationDomain !== DESTINATION_DOMAIN) continue;
 
@@ -384,6 +388,7 @@ async function scanOrigin(state) {
       }
       state.operations[id] = {
         destinationDomain,
+        routeId: ROUTE_ID,
         validatorFeeWei: fee.toString(),
         sourceBlockNumber: Number(event.blockNumber),
       };
@@ -438,44 +443,24 @@ function aggregateSignature(attestation) {
 }
 
 function expectedPayload(id, attestation, operation) {
-  return solidityPacked(
-    [
-      "string",
-      "uint64",
-      "uint32",
-      "uint32",
-      "uint64",
-      "uint64",
-      "address",
-      "address",
-      "address",
-      "address",
-      "address",
-      "address",
-      "uint256",
-      "bytes32",
-      "bytes32",
-      "uint32",
-    ],
-    [
-      "XGR_ILN_CHECKPOINT_V1",
-      ORIGIN_CHAIN_ID,
-      ORIGIN_DOMAIN,
-      DESTINATION_DOMAIN,
-      BigInt(attestation.setId),
-      BigInt(operation.sourceBlockNumber),
-      ORIGIN_ILN_REGISTRY,
-      ORIGIN_ILN_GATEWAY,
-      ORIGIN_WARP_ROUTER,
-      ORIGIN_MAILBOX,
-      ORIGIN_MERKLE_TREE_HOOK,
-      DESTINATION_WARP_ROUTER,
-      BigInt(operation.validatorFeeWei),
-      id,
-      attestation.root,
-      Number(attestation.index),
-    ],
-  );
+  return encodeCheckpointPayloadV2({
+    sourceChainId: ORIGIN_CHAIN_ID,
+    sourceDomain: ORIGIN_DOMAIN,
+    destinationDomain: DESTINATION_DOMAIN,
+    routeId: ROUTE_ID,
+    setId: BigInt(attestation.setId),
+    sourceBlockNumber: BigInt(operation.sourceBlockNumber),
+    registry: ORIGIN_ILN_REGISTRY,
+    gateway: ORIGIN_ILN_GATEWAY,
+    sourceRouter: ORIGIN_WARP_ROUTER,
+    mailbox: ORIGIN_MAILBOX,
+    merkleTreeHook: ORIGIN_MERKLE_TREE_HOOK,
+    destinationRouter: DESTINATION_WARP_ROUTER,
+    validatorFeeWei: BigInt(operation.validatorFeeWei),
+    authorizedMessageId: id,
+    root: attestation.root,
+    index: Number(attestation.index),
+  });
 }
 
 async function getAttestation(id, operation) {
@@ -492,11 +477,14 @@ async function getAttestation(id, operation) {
     throw err;
   }
 
-  if (attestation.version !== "XGR_ILN_CHECKPOINT_V1") {
+  if (attestation.version !== "XGR_ILN_CHECKPOINT_V2") {
     throw new Error("ILN attestation version mismatch");
   }
   if (lower(attestation.chain) !== lower(ATTESTATION_ROUTE)) {
     throw new Error("ILN attestation route mismatch");
+  }
+  if (lower(attestation.routeId) !== ROUTE_ID) {
+    throw new Error("ILN attestation routeId mismatch");
   }
   if (BigInt(attestation.originChainId) !== ORIGIN_CHAIN_ID) {
     throw new Error("ILN attestation origin chain mismatch");
@@ -589,30 +577,28 @@ function buildMetadata(state, id, operation, attestation) {
     );
   }
 
-  const innerMetadata = coder.encode(
-    [
-      "uint32",
-      "bytes32[32]",
-      "uint32",
-      "uint64",
-      "uint64",
-      "uint256",
-      "bytes32",
-      "bytes",
-      "bytes",
-    ],
-    [
-      messageIndex,
-      proof,
-      checkpointIndex,
-      BigInt(attestation.setId),
-      BigInt(operation.sourceBlockNumber),
-      BigInt(operation.validatorFeeWei),
-      id,
-      attestation.signerBitmap,
-      aggregateSignature(attestation),
-    ],
-  );
+  const innerMetadata = encodeISMMetadataV313({
+    messageIndex,
+    merkleProof: proof,
+    sourceChainId: ORIGIN_CHAIN_ID,
+    sourceDomain: ORIGIN_DOMAIN,
+    destinationDomain: DESTINATION_DOMAIN,
+    routeId: ROUTE_ID,
+    setId: BigInt(attestation.setId),
+    sourceBlockNumber: BigInt(operation.sourceBlockNumber),
+    registry: ORIGIN_ILN_REGISTRY,
+    gateway: ORIGIN_ILN_GATEWAY,
+    sourceRouter: ORIGIN_WARP_ROUTER,
+    mailbox: ORIGIN_MAILBOX,
+    merkleTreeHook: ORIGIN_MERKLE_TREE_HOOK,
+    destinationRouter: DESTINATION_WARP_ROUTER,
+    validatorFeeWei: BigInt(operation.validatorFeeWei),
+    authorizedMessageId: id,
+    root: attestation.root,
+    checkpointIndex,
+    signerBitmap: attestation.signerBitmap,
+    aggregateSignature: aggregateSignature(attestation),
+  });
 
   return wrapDestinationMetadata(innerMetadata);
 }
@@ -704,6 +690,7 @@ async function main() {
       originChainId: String(ORIGIN_CHAIN_ID),
       originDomain: ORIGIN_DOMAIN,
       originGateway: ORIGIN_ILN_GATEWAY,
+      routeId: ROUTE_ID,
       originRegistry: ORIGIN_ILN_REGISTRY,
       destinationChainId: String(DESTINATION_CHAIN_ID),
       destinationDomain: DESTINATION_DOMAIN,
