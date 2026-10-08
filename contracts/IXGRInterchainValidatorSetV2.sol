@@ -3,6 +3,7 @@ pragma solidity ^0.8.24;
 
 interface IXGRInterchainValidatorSetV2 {
     function originChainId() external view returns (uint64);
+    function setId() external view returns (uint64);
     function destinationDomain() external view returns (uint32);
     function verifier() external view returns (address);
     function verifierKeyFormat() external view returns (uint8);
