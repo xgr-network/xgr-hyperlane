@@ -25,7 +25,7 @@
 | Object | Cleanup rule | Why |
 |---|---|---|
 | Route catalog + confirmed scan cursors | Keep | Needed to recover on-chain discovery and restart safely |
-| Outstanding message-specific attestation(s) | Keep indefinitely until destination Mailbox **positively reports delivered** | Users must recover even after outages, long delays and rotations |
+| Outstanding message-specific attestation(s) | 30-day cache; prune only after source Gateway receipt, checkpoint and current destination signer-set can be reconstructed | Users re-request an attestation for the original message without new bridge, lock or validator fee |
 | Attestations for delivered messages | Retain at least 7 more days since archive directory modification, then delete only after destination RPC confirms delivered again | Recoverable elsewhere via immutable chain data; avoids unlimited completed-transfer archives |
 | Pending BLS local votes | Preserve while pending; remove on quorum finalization or positively confirmed destination delivery | Avoid source/ISM signer loss; stop repeated gossip after settlement |
 | Public unsigned quorum request hints | 15-minute bounded lease; clients may re-request the *same original message* | Anti-spam; hint expiration never touches a token balance or immutable bridge operation |
@@ -54,3 +54,7 @@ xgrchain ibft interchain storage-status --data-dir /path/to/node-data
 ```
 
 The report counts total on-disk interchain files and bytes, separated into transfer attestations, local BLS votes, queued public quorum hints, governance and other interchain state. It is not a substitute for monitoring free disk space on the host; alert on remaining filesystem capacity as well as trends in pending versus delivered messages. The new cleanup schedule is five minutes, at most 64 old transfer archives inspected per cycle. Already delivered archive removal is deliberately conservative and only eventual, never an immediate consensus action.
+
+### Regenerable pending quorums (v3.1.4)
+
+At 30 days a pending message-specific quorum is eligible for eviction **only after** the validator node has re-read the canonical original source Gateway operation, historical route, verified same-tx Mailbox.Dispatch, original checkpoint and currently available destination validator set. Failed historical RPC/proof validation keeps the quorum. A new public quorum request signs the **original** message and requires no additional source fee. This policy depends on retained historical RPC coverage and sufficient online validators; an existing quorum provides availability when those components are unavailable. Operators may independently retain backups longer.
