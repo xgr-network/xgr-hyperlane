@@ -134,6 +134,12 @@ contract XGRILNInterchainISMV2 {
             messageIndex > checkpointIndex
         ) return false;
 
+        // Settlement authority must track the CURRENT destination validator set.
+        // Historical membership snapshots remain auditable in RegistryV2, but
+        // retired quorums must never authorize delivery after rotation.
+        // Pending messages are re-attested by the new set before settlement.
+        if (setId != registry.setId()) return false;
+
         if (_messageOrigin(message) != sourceDomain) return false;
         if (_messageDestination(message) != destinationDomain) return false;
 
