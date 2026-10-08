@@ -160,7 +160,11 @@ contract XGRILNRegistry is IXGRILNRegistry {
             revert StaleGovernanceNonce(expectedNonce, p.nonce);
         }
 
+        // Governance changes current route state. Historical validator sets
+        // remain valid for settlement attestations, but must not control
+        // future governance after a membership transition.
         if (
+            p.setId != governanceRegistry.setId() ||
             !governanceRegistry.verifyQuorum(
                 p.setId,
                 payload,
