@@ -23,7 +23,7 @@ contract XGRILNFeeVaultTest is Test {
     }
 
     function _snapshot(uint64 setId, uint64 nonce, address[] memory list) internal {
-        vault.updateRecipients(setId, nonce, list, hex"01", hex"01");
+        registry.setMembers(list);
     }
 
     function _members(address x, address y) internal pure returns (address[] memory list) {
@@ -61,21 +61,15 @@ contract XGRILNFeeVaultTest is Test {
         vm.prank(GATEWAY);
         vault.allocate{value: 2}(MESSAGE_1);
         vm.prank(GATEWAY);
-        vm.expectRevert(XGRILNFeeVault.InvalidSnapshot.selector);
+        vm.expectRevert(XGRILNFeeVault.InvalidOperation.selector);
         vault.allocate{value: 2}(MESSAGE_1);
     }
 
-    function testGovernanceQuorumAndSortedRecipientsRequired() public {
-        address[] memory reversed = _members(B, A);
-        vm.expectRevert(XGRILNFeeVault.InvalidSnapshot.selector);
-        _snapshot(1, 1, reversed);
-        registry.setResult(false);
-        vm.expectRevert(XGRILNFeeVault.InvalidQuorum.selector);
+    function testReadsLiveLocalRegistryWithoutSeparateGovernanceQuorum() public {
         _snapshot(1, 1, _members(A, B));
-        registry.setResult(true);
-        _snapshot(1, 1, _members(A, B));
-        vm.expectRevert(XGRILNFeeVault.InvalidSnapshot.selector);
-        _snapshot(1, 2, _members(B, C));
+        assertEq(vault.recipientCount(), 2);
+        _snapshot(2, 2, _members(B, C));
+        assertEq(vault.recipientCount(), 2);
     }
 
     function testClaimCannotBeRepeated() public {
