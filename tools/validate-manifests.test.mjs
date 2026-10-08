@@ -41,3 +41,63 @@ test("source-chain fee must not be implied before governance", () => {
   x.assets.XGR.routes.routes[1].validatorFeeWei="123456";
   assert.ok(validateCatalog(x).some(s=>s.includes("unapproved ILN route")));
 });
+
+
+test("zero-decimal ERC-20 assets are valid canonical representations", () => {
+  const x=copy();
+  x.assets.XGR.metadata.decimals=0;
+  x.assets.XGR.metadata.representations[0].representation="collateral";
+  x.assets.XGR.metadata.representations[0].assetAddress="0x"+"8".repeat(40);
+  x.assets.XGR.metadata.canonical.representation="collateral";
+  assert.deepEqual(validateCatalog(x), []);
+});
+test("canonical representation cannot differ from its source chain", () => {
+  const x=copy();
+  x.assets.XGR.metadata.canonical.representation="collateral";
+  assert.ok(validateCatalog(x).some(s=>s.includes("canonical asset representation differs")));
+});
+test("a verified and source-quorum-activated route is supported without changing validator", () => {
+  const x=copy();
+  const source=x.infrastructure.xgrchain.ilnV314;
+  source.status="verified-deployed";
+  source.verifiedAtBlock=100;
+  source.sourceRegistry="0x"+"1".repeat(40);
+  const destination=x.infrastructure.base.ilnV314;
+  destination.status="verified-deployed";
+  destination.verifiedAtBlock=200;
+  destination.destinationRegistryV2="0x"+"2".repeat(40);
+  destination.destinationIsmV2="0x"+"3".repeat(40);
+  destination.blsVerifier="0x"+"4".repeat(40);
+  const desired=x.assets.XGR.routes.routes[0];
+  const observed=x.assets.XGR.deployment.ilnV314.routes[0];
+  desired.routeId="0x"+"5".repeat(64);
+  desired.validatorFeeWei="1000";
+  desired.activation="quorum-activated";
+  observed.routeId=desired.routeId;
+  observed.validatorFeeWei=desired.validatorFeeWei;
+  observed.gateway="0x"+"6".repeat(40);
+  observed.feeVault="0x"+"7".repeat(40);
+  observed.governanceTx="0x"+"8".repeat(64);
+  x.assets.XGR.deployment.ilnV314.status="active";
+  x.assets.XGR.mainnet.ilnV314Activation="governance-confirmed";
+  assert.deepEqual(validateCatalog(x), []);
+});
+test("an active route requires a verified destination ISM and governance evidence", () => {
+  const x=copy();
+  x.assets.XGR.routes.routes[0].activation="quorum-activated";
+  x.assets.XGR.routes.routes[0].routeId="0x"+"a".repeat(64);
+  x.assets.XGR.routes.routes[0].validatorFeeWei="999";
+  const errors=validateCatalog(x);
+  assert.ok(errors.some(s=>s.includes("activated ILN route requires on-chain governance")));
+  assert.ok(errors.some(s=>s.includes("activated route requires verified source registry")));
+});
+test("route IDs are unique within an identical source and destination", () => {
+  const x=copy();
+  const original=x.assets.XGR.routes.routes[0];
+  original.routeId="0x"+"b".repeat(64);
+  original.validatorFeeWei="1";
+  const duplicate=structuredClone(original);
+  duplicate.name="xgr_to_base_second";
+  x.assets.XGR.routes.routes.push(duplicate);
+  assert.ok(validateCatalog(x).some(s=>s.includes("duplicate canonical ILN route ID")));
+});
