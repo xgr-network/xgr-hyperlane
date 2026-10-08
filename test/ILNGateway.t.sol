@@ -111,6 +111,28 @@ contract ILNGatewayTest is Test {
         );
     }
 
+
+    function testBridgeAtomicallyCreditsVaultAndFormerValidatorCanClaim() public {
+        bytes32 recipient = bytes32(uint256(uint160(address(0xCAFE))));
+        (,, uint256 totalNative,) = gateway.quoteILN(DESTINATION_DOMAIN, recipient, 1 ether);
+        vm.prank(USER);
+        bytes32 messageId = gateway.bridge{value: totalNative}(DESTINATION_DOMAIN, recipient, 1 ether);
+        assertTrue(gateway.feeVault().allocatedOperation(messageId));
+        assertEq(address(gateway).balance, 0);
+        assertEq(address(gateway.feeVault()).balance, 1);
+        assertEq(gateway.feeVault().claimable(address(0x101)), 1);
+        assertEq(gateway.feeVault().claimable(address(0x202)), 0);
+
+        address[] memory newerSet = new address[](2);
+        newerSet[0] = address(0x202);
+        newerSet[1] = address(0x303);
+        gateway.feeVault().updateRecipients(2, 2, newerSet, hex"01", hex"01");
+        vm.prank(address(0x101));
+        gateway.feeVault().claim();
+        assertEq(address(0x101).balance, 1);
+        assertEq(gateway.feeVault().claimable(address(0x101)), 0);
+    }
+
     function testDisabledRouteRejected() public {
         registry.setRoute(
             DESTINATION_DOMAIN,
