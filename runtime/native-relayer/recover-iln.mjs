@@ -107,7 +107,7 @@ const destSetAbi = [
 
 const sourceMailbox = new Contract(originMailboxAddress, mailboxAbi, origin);
 const sourceHook = new Contract(originHookAddress, hookAbi, origin);
-const sourceGateway = new Contract(originGatewayAddress, [ILN_OPERATION_EVENT], origin);
+const sourceGateway = new Contract(originGatewayAddress, [ILN_OPERATION_EVENT, "function activationBlock() view returns (uint256)"], origin);
 const sourceRegistry = new Contract(originRegistryAddress, registryAbi, origin);
 const destMailbox = new Contract(destinationMailboxAddress, mailboxAbi, destination);
 const destISM = new Contract(destinationISMAddress, destISMAbi, destination);
