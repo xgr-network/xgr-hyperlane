@@ -41,22 +41,22 @@ The output is either:
 
 The client checks source transaction correspondence, operation fee, historical route binding, canonical checkpoint payload, Merkle inclusion, current destination set ID, and destination Mailbox simulation before outputting unsigned transaction calldata. A historical state RPC is efficient; reconstructing the Merkle tree from publicly indexed events remains an option if it is unavailable.
 
-## Critical remaining gap — fresh quorum demand after set rotation
+## Critical remaining gap — generic public quorum acquisition (same path for first transfer and recovery)
 
 The existing XGR RPC is **read-only**; it does not request or generate signatures. The existing node refreshes persisted **local pending votes**, but a **completed, archived** attestation can remain stale after the destination's `setId` advances. There is currently no fully implemented permissionless RPC mechanism to **request** refreshed attestation for any arbitrary completed, undelivered fee-qualified message.
 
-Consequently this feature is **not yet a complete recovery guarantee**. Implement an idempotent, publicly accessible `request re-attestation for (routeName, messageId)` RPC in XGR node, which must:
+Consequently this feature is **not yet a complete recovery guarantee**. Implement **one idempotent, public, generic quorum request/get API** for first-time delivery **and** any undelivered message after validator rotation. There must be **no special privileged recovery RPC**. The normative interface, statuses and admission rules are in [ILN spec, Sections 11.1-11.6](ILN.md#111-v313-north-star-permissionless-rpc-first-quorum-lifecycle-normative). The generic XGR node process must:
 
 1. Verify the original canonical Gateway event, source route and Merkle root at sufficiently confirmed source state.
-2. Read the destination current validator-set ID, and check `Mailbox.delivered(messageId)` to avoid unnecessary signatures.
+2. Read the destination current validator-set ID **and** confirm `Mailbox.delivered(messageId) == false` before enqueue and again before signing. A destination RPC failure must fail closed; no signing on unknown delivery state.
 3. Treat request as a **hint only**, never an authorization to sign. Validator nodes independently evaluate all eligibility conditions and only sign canonical data.
 4. Gossip/rebroadcast and collect a fresh destination quorum using current eligible validator keys.
-5. Replace the archived per-message attestation atomically with the newly finalized one, preserving message ID, historical source block, source route ID, and fee; do not create new source transactions, lock/burn assets or charge another validator fee.
-6. Work after node restart and independently of the XGR-operated relayer process, including for already finalized old-set attestations; rate-limit and bound resource consumption to prevent RPC-driven denial of service.
-7. Add tests for user-initiated refresh, already-delivered, duplicate requests, set rotation during signing, source-chain reorg, restart persistence, and a third-party destination Mailbox delivery.
+5. Publish the new current-set attestation by canonical route/message/set identity, preserving message ID, original source transaction/block, route ID and fee; retired attestation may remain as historical audit material. Never create another lock/burn, dispatch or validator fee.
+6. Work after node restart and independently of the XGR-operated relayer process, including already finalized old-set attestations. No bulk regeneration on a set change; delivered historical operations must never be re-signed. Use persistent idempotency, cheap negative filtering, bounded log-index lookups, queues, limits and per-peer backoff to prevent RPC/P2P DoS.
+7. Add tests for first-time and rotated-set requests via the **same API**, delivered-history mass spam, unknown destination status, random message IDs, duplicate/concurrent requests, set rotation during signing, source-chain reorg, restart persistence and independent destination Mailbox delivery.
 
 A distinct XGR validator node or any participant should be able to serve the public RPC route; no centrally maintained watchlist must be mandatory.
 
 ## Release gate
 
-Do **not** mark v3.1.3 as permissionlessly recoverable or deploy solely on the unsigned recovery CLI: **fresh-quorum request / automatic re-attestation and independent E2E must pass first**. Existing production v3.1.1 relayers are unaffected.
+Do **not** mark v3.1.3 as permissionlessly recoverable or deploy solely on the unsigned recovery CLI: **generic permissionless quorum-request lifecycle, delivered-aware anti-spam/idempotency and independent E2E must pass first**. Existing production v3.1.1 relayers are unaffected.
