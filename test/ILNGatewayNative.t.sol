@@ -36,11 +36,6 @@ contract ILNGatewayNativeTest is Test {
             false
         );
 
-        address[] memory feeValidators = new address[](2);
-        feeValidators[0] = address(0x101);
-        feeValidators[1] = address(0x202);
-        gateway.feeVault().updateRecipients(1, 1, feeValidators, hex"01", hex"01");
-
         registry.setRoute(
             DESTINATION_DOMAIN,
             ROUTE_ID,
