@@ -32,7 +32,7 @@
 | Expired source-governance proposal + quorum files | Remove after 7-day post-expiration grace; active ones remain | Expired signatures cannot govern anymore |
 | FeeVault claimable balances | Never pruned from node JSON; held on-chain | Validator native fee claims survive membership changes |
 
-Maintenance runs in a separate Go worker, currently once per hour, checking at most 16 old transfer archive candidates per cycle. Failed chain RPC and ambiguous delivery **always keep** files. This bounds maintenance IO; on-disk outstanding quorums may still grow with number of undelivered operations, so operational observability, disk-alerts and reliable destination settlement remain necessary.
+Maintenance runs in a separate Go worker, currently every five minutes, checking at most 64 old transfer archive candidates per cycle. Failed chain RPC and ambiguous delivery **always keep** files. This bounds maintenance IO; on-disk outstanding quorums may still grow with number of undelivered operations, so operational observability, disk-alerts and reliable destination settlement remain necessary.
 
 ### Explicit release blockers
 
