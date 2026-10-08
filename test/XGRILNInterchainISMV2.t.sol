@@ -124,6 +124,42 @@ contract XGRILNInterchainISMV2Test is Test {
         assertTrue(ism.verify(metadata, message));
     }
 
+    function testRetiredSetCannotAuthorizeDeliveryAfterRotation() public {
+        bytes memory message = _message();
+        bytes32 messageId = keccak256(message);
+        bytes32[32] memory proof = _singleLeafProof();
+        bytes32 root = _branchRoot(messageId, proof, 0);
+
+        bytes memory metadata = abi.encode(
+            uint32(0), proof,
+            SOURCE_CHAIN_ID, SOURCE_DOMAIN, DESTINATION_DOMAIN, ROUTE_ID,
+            uint64(1), uint64(123456),
+            SOURCE_REGISTRY, SOURCE_GATEWAY, SOURCE_ROUTER, SOURCE_MAILBOX,
+            SOURCE_HOOK, DEST_ROUTER, uint256(1000), messageId, root,
+            uint32(0), hex"03", _bytes(96, 0x77)
+        );
+        assertTrue(ism.verify(metadata, message));
+
+        // The same valid signed checkpoint must not retain authority
+        // once the destination RegistryV2 membership advances.
+        XGRInterchainValidatorRegistryV2 registry =
+            XGRInterchainValidatorRegistryV2(address(ism.registry()));
+        registry.applyMembership{value: 1 ether}(
+            XGRInterchainValidatorRegistryV2.MembershipTransition({
+                expectedSetId: 1,
+                validUntil: uint64(block.timestamp + 5 minutes),
+                action: 1,
+                validator: address(0xD4),
+                blsPublicKey: _bytes(48, 0x44),
+                blsPublicKeyEIP2537: _bytes(128, 0x54)
+            }),
+            hex"03",
+            _bytes(96, 0x66)
+        );
+        assertEq(registry.setId(), 2);
+        assertFalse(ism.verify(metadata, message));
+    }
+
     function testDifferentAuthorizedMessageIdRejected() public view {
         bytes memory message = _message();
         bytes32[32] memory proof = _singleLeafProof();
