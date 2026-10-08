@@ -3,6 +3,7 @@ pragma solidity ^0.8.24;
 
 import {Test} from "forge-std/Test.sol";
 import {ILNGateway} from "../contracts/ILNGateway.sol";
+import {XGRILNFeeVault} from "../contracts/XGRILNFeeVault.sol";
 import {IXGRILNRegistry} from "../contracts/IXGRILNRegistry.sol";
 import {MockILNWarpRouter} from "../contracts/test/MockILNWarpRouter.sol";
 import {MockXGRILNRegistry} from "../contracts/test/MockXGRILNRegistry.sol";
@@ -122,8 +123,9 @@ contract ILNGatewayTest is Test {
         newerSet[0] = address(0x202);
         newerSet[1] = address(0x303);
         registry.governanceRegistry().setMembers(newerSet);
+        XGRILNFeeVault vault = gateway.feeVault();
         vm.prank(address(0x101));
-        gateway.feeVault().claim();
+        vault.claim();
         assertEq(address(0x101).balance, 1);
         assertEq(gateway.feeVault().claimable(address(0x101)), 0);
     }
