@@ -83,6 +83,29 @@ validator membership are ready.
 Do not add invented live XDC, Polygon or other deployment addresses.
 Create their configs when their real topology and finality policy are known.
 
+
+## Manifest lifecycle for subsequent deployments
+
+The manifest validator deliberately accepts all the following stages, without
+editing it for each new token or chain:
+
+| Stage | Desired route | Observed deployment | Evidence |
+| --- | --- | --- | --- |
+| Planned | `pending-governance`, ID/fee null | `unverified-not-activated`, addresses null | None yet |
+| Contracts deployed | `pending-governance`, ID and native-source fee specified | `deployed-pending-governance`, on-chain Gateway/Vault recorded | Shared infrastructure marked `verified-deployed` with block evidence |
+| Source quorum executed | `quorum-activated`, ID and fee retained | `active`, exact ID, fee, Gateway, FeeVault and governance TX | Verified source ILN Registry and destination ISM |
+
+The asset-level `mainnet.json` flag is `not-authorized` until at least one
+route has confirmed governance, then `governance-confirmed`. These labels
+describe **recorded observations**, not authority to enable a route:
+Registry governance remains the sole source of truth.
+
+Canonical ERC-20 token identities may include the known contract address in
+`asset.json`. Deployed Warp router and Gateway addresses must only appear in
+the separate deployment inventory. Zero-decimal ERC-20 assets are supported.
+Routes sharing the same source chain, destination chain and route ID are
+rejected as ambiguous even if they belong to different assets.
+
 ## Offline checks
 
 ~~~bash
