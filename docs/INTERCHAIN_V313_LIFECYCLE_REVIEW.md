@@ -54,3 +54,23 @@ Route ADD immediately enables. Maintain fail-closed deployment policy; verify so
 ## Verification status
 
 Source code reviewed and targeted governance guard/test committed on feature branch. **No tests have been executed in this review environment** (Forge/Solc not installed here and GitHub clone unavailable). Earlier green suite (65 tests) predates these commits. Do not deploy or migrate on this review alone.
+
+
+## Security decision: historical set authority (accepted 2026-10-08)
+
+The protocol will **not** use a PoS light client on external chains. Forced removal uses the existing destination Interchain quorum under the same ordinary BFT liveness assumption. This is a conscious trust/liveness boundary, not an assertion that the destination contract reads XGR PoS directly.
+
+For **new ILN v3.1.3 settlement**, the destination `XGRILNInterchainISMV2` must require `metadata.setId == registry.setId()`. Old signatures remain recorded as audit history, but do not authorize delivery after a destination membership change. This fail-closed rule is implemented in commit `a6a6842`, with an ISM rotation regression test in `18d06d7`.
+
+**Important remaining functionality gate (NOT yet implemented):** the Go node currently regenerates pending *local votes* on a set change, but completed, archived per-message quorum attestations can remain in `attestations/<route>/<messageId>.json` with the old set. The relayer will retrieve that obsolete attestation, and the hardened destination ISM will reject delivery. Before enabling v3.1.3, implement and test bounded, restart-safe re-attestation of any **undelivered** fee-qualified source operation whose archived attestation is stale. The regeneration must:
+- re-check the original canonical Gateway operation and route against the confirmed source block;
+- use the **current destination** validator registry, quorum, and source identity;
+- never create a new Gateway fee or duplicate the source asset transfer;
+- preserve message ID, source block, Merkle inclusion, and source-event evidence;
+- be replay-safe and retry after relayer/node restart;
+- avoid repeatedly signing already delivered messages;
+- confirm final delivery through the destination Mailbox before completing recovery.
+
+**Do not release on the strength of the ISM guard alone.** The current patch establishes the security invariant, but the user-level liveness invariant needs the cross-repo Node/relayer recovery fix and E2E test.
+
+**Scope reminder:** `XGRNativeInterchainISMV2` from the legacy reverse bridge is a separate verification path and was not changed. Any decision to require current sets there needs a separate compatibility and migration plan.
