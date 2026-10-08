@@ -37,11 +37,6 @@ contract ILNGatewayTest is Test {
             false
         );
 
-        address[] memory feeValidators = new address[](2);
-        feeValidators[0] = address(0x101);
-        feeValidators[1] = address(0x202);
-        gateway.feeVault().updateRecipients(1, 1, feeValidators, hex"01", hex"01");
-
         registry.setRoute(
             DESTINATION_DOMAIN,
             ROUTE_ID,
@@ -126,7 +121,7 @@ contract ILNGatewayTest is Test {
         address[] memory newerSet = new address[](2);
         newerSet[0] = address(0x202);
         newerSet[1] = address(0x303);
-        gateway.feeVault().updateRecipients(2, 2, newerSet, hex"01", hex"01");
+        registry.governanceRegistry().setMembers(newerSet);
         vm.prank(address(0x101));
         gateway.feeVault().claim();
         assertEq(address(0x101).balance, 1);
