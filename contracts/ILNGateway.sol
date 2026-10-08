@@ -2,6 +2,17 @@
 pragma solidity ^0.8.24;
 
 import {IXGRILNRegistry} from "./IXGRILNRegistry.sol";
+import {IXGRInterchainValidatorSetV2} from "./IXGRInterchainValidatorSetV2.sol";
+import {XGRILNFeeVault} from "./XGRILNFeeVault.sol";
+
+// Bound to the existing canonical source ILN Registry getter.
+// Do not accept any caller-supplied governance authority for fee claims.
+interface IILNSourceGovernanceLookup {
+    function governanceRegistry()
+        external
+        view
+        returns (IXGRInterchainValidatorSetV2);
+}
 
 struct ILNQuote {
     address token;
@@ -24,12 +35,13 @@ interface IILNWarpRouter {
     ) external payable returns (bytes32 messageId);
 }
 
-/// @notice Route-specific source gateway for XGR Interchain v3.1.3.
+/// @notice Route-specific source gateway for XGR Interchain v3.1.4.
 /// @dev The shared ILN Registry is canonical for mutable route state. The
 ///      Gateway binds one routeId to one source Warp router and emits exactly
 ///      one fee-qualified ILNOperation for each successful Hyperlane message.
 contract ILNGateway {
     IXGRILNRegistry public immutable ilnRegistry;
+    XGRILNFeeVault public immutable feeVault;
     bytes32 public immutable routeId;
     uint32 public immutable destinationDomain;
     address public immutable warpRouter;
@@ -37,6 +49,8 @@ contract ILNGateway {
     bool public immutable nativeQuoteIncludesPrincipal;
     uint256 public immutable activationBlock;
 
+    // Backwards-compatible cumulative getter. From v3.1.4 onward the fee
+    // is held by feeVault, not in the Gateway balance.
     uint256 public totalValidatorFeesEscrowedWei;
 
     uint256 private unlocked = 1;
@@ -50,6 +64,7 @@ contract ILNGateway {
     error TokenApprovalFailed();
     error InvalidMessageId();
     error ReentrantCall();
+    error FeeRecipientsUnavailable();
 
     event ILNOperation(
         bytes32 indexed routeId,
@@ -83,6 +98,22 @@ contract ILNGateway {
         if (token != address(0) && nativeQuoteIncludesPrincipal_) {
             revert InvalidConfiguration();
         }
+
+        IXGRInterchainValidatorSetV2 sourceGovernance =
+            IILNSourceGovernanceLookup(ilnRegistry_).governanceRegistry();
+        if (address(sourceGovernance) == address(0) ||
+            address(sourceGovernance).code.length == 0
+        ) revert InvalidConfiguration();
+
+        // Deploy a source-native vault with immutable route/gateway binding.
+        // Deploying from this constructor avoids any unsafe mutable setter
+        // or circular CREATE2 address coordination.
+        feeVault = new XGRILNFeeVault(
+            address(sourceGovernance),
+            address(this),
+            routeId_,
+            destinationDomain_
+        );
 
         ilnRegistry = IXGRILNRegistry(ilnRegistry_);
         routeId = routeId_;
@@ -137,6 +168,7 @@ contract ILNGateway {
         }
 
         IXGRILNRegistry.RouteRecord memory route = _canonicalRoute();
+        _requireFeeRecipients();
         routerNativeValueWei = _quoteRouterNative(recipient, amount);
         routeValidatorFeeWei = route.validatorFeeWei;
         totalNativeValueWei =
@@ -157,6 +189,7 @@ contract ILNGateway {
         }
 
         IXGRILNRegistry.RouteRecord memory route = _canonicalRoute();
+        _requireFeeRecipients();
 
         uint256 routerNativeValueWei =
             _quoteRouterNative(recipient, amount);
@@ -190,6 +223,10 @@ contract ILNGateway {
 
         if (messageId == bytes32(0)) revert InvalidMessageId();
 
+        // Atomic with token lock/burn and Hyperlane dispatch. If the
+        // FeeVault rejects a missing snapshot, repeated message ID, or
+        // failed accounting, this entire bridge transaction reverts.
+        feeVault.allocate{value: route.validatorFeeWei}(messageId);
         totalValidatorFeesEscrowedWei += route.validatorFeeWei;
 
         emit ILNOperation(
@@ -198,6 +235,12 @@ contract ILNGateway {
             destinationDomain,
             route.validatorFeeWei
         );
+    }
+
+    function _requireFeeRecipients() private view {
+        if (feeVault.recipientSetId() == 0 || feeVault.recipientCount() == 0) {
+            revert FeeRecipientsUnavailable();
+        }
     }
 
     function _canonicalRoute()
