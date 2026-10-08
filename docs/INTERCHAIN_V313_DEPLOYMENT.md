@@ -179,35 +179,28 @@ routeId registration
 governance state
 ```
 
-### Recommended repository layout
 
-```text
-config/
-├─ chains/
-│  ├─ xgrchain.json
-│  ├─ base.json
-│  └─ ...
-└─ assets/
-   ├─ XGR/
-   │  ├─ asset.json
-   │  └─ routes.json
-   └─ <ASSET>/
-      ├─ asset.json
-      └─ routes.json
+### Implemented multi-asset repository layout (v3.1.4 feature branch)
 
-deployments/
-└─ mainnet/
-   ├─ infrastructure/
-   │  ├─ xgrchain.json
-   │  └─ base.json
-   └─ assets/
-      ├─ XGR.json
-      └─ <ASSET>.json
-```
+~~~text
+contracts/                               reusable generic Solidity
+config/chains/{xgrchain,base,...}.json
+config/assets/XGR/{asset,routes,mainnet}.json
+config/assets/<TOKEN>/{asset,routes,mainnet}.json
+deployments/xgrchain-mainnet.json        original historical inventory
+deployments/xgr-base-route.json          original historical inventory
+deployments/mainnet/infrastructure/{xgrchain,base,...}.json
+deployments/mainnet/assets/{XGR,<TOKEN>,...}.json
+tools/validate-manifests.mjs
+tools/validate-manifests.test.mjs
+~~~
 
-Desired configuration and observed deployment state must remain separate.
-
-`asset.json` should contain stable asset metadata and canonical representation information. `routes.json` should contain desired route topology. `deployments/.../*.json` should contain generated on-chain addresses, transaction hashes, route IDs and verified observed state.
+This layout is implemented without editing existing contracts, old inventory
+paths or relayer settings. See docs/MULTI_ASSET_LAYOUT.md. Desired
+configuration and observed on-chain deployment remain separate. Until new
+v3.1.4 routes have been deployed and governance approved, their route ID,
+source fee, gateway and FeeVault values are null. Validate with:
+node tools/validate-manifests.mjs
 
 ### Idempotent deployment target
 

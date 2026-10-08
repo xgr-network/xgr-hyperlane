@@ -14,6 +14,20 @@ deployments/xgrchain-mainnet.json
 deployments/xgr-base-route.json
 ```
 
+Normalized mainnet records, separate from desired config, are now in:
+
+~~~text
+deployments/mainnet/infrastructure/xgrchain.json
+deployments/mainnet/infrastructure/base.json
+deployments/mainnet/assets/XGR.json
+~~~
+
+The old paths above remain authoritative provenance for historical
+addresses and E2E transfer evidence. The normalized records are validated
+against them by tools/validate-manifests.mjs. ILN v3.1.4 deployment fields
+are deliberately null/unverified pending real on-chain deployment and
+quorum governance; see docs/MULTI_ASSET_LAYOUT.md.
+
 The current production asset route is:
 
 ```text

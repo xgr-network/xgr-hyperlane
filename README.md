@@ -4,6 +4,14 @@ XGR Interchain is the mainnet cross-chain infrastructure of XGR Network.
 
 This repository contains the public contracts, deployment manifests, native relayer runtime and operational documentation for XGR Interchain using Hyperlane-compatible messaging and XGR-native BLS validator security.
 
+On the v3.1.4 feature branch, the multi-asset layout keeps generic Solidity
+in contracts/, chain configuration in config/chains/, token-specific
+configuration in config/assets/<TOKEN>/, and observed deployments in
+deployments/mainnet/. Existing legacy manifests and runtime env paths stay
+unchanged. New ILN route manifests are pending governance, not deployed.
+See docs/MULTI_ASSET_LAYOUT.md and run node tools/validate-manifests.mjs.
+
+
 The first production asset route connects:
 
 **XGRChain ↔ Base**

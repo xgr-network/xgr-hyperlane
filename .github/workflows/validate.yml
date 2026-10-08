@@ -37,6 +37,13 @@ jobs:
           jq empty runtime/xgrchain.json
           jq empty runtime/native-relayer/package.json
 
+      - name: Validate multi-asset and deployment manifest invariants
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/validate-manifests.mjs
+          node --test tools/validate-manifests.test.mjs
+
       - name: Validate shell and JavaScript syntax
         shell: bash
         run: |

@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 1,
+  "kind": "asset-deployment",
+  "network": "mainnet",
+  "asset": "XGR",
+  "inventorySource": "deployments/xgr-base-route.json",
+  "observedAt": "2026-10-04",
+  "legacy": {
+    "status": "mainnet-bidirectional-e2e-validated-as-of-inventory",
+    "publicBridge": "https://bridge.xgr.network",
+    "model": "lock-mint-burn-unlock",
+    "routers": {
+      "xgrchain": {
+        "role": "lock-unlock",
+        "representation": "native",
+        "address": "0x202C10bDeCf3B796EA4B4025C81952C4F2DD9f93",
+        "deploymentTx": "0x54229bb14d6a46a8f73b40a69e9a1c47b597741fb26b79007ae57e9d87331827"
+      },
+      "base": {
+        "role": "mint-burn",
+        "representation": "synthetic",
+        "address": "0x3b83687d77170d42feddfe221629cc21e771e021",
+        "deploymentTx": null
+      }
+    },
+    "e2eEvidence": {
+      "xgr_to_base": {
+        "messageId": "0x1b73073ea020bbebbd716a68a58f11a10f8c0d712ccbd38d41ed1dfc53550ad7",
+        "sourceTx": "0x08671a6c4bc10ab8af4fda602f8d09a393f17212b3e4bf729002c92ce1e50613",
+        "destinationTx": "0x686e93af92e2a14dee061b33042b62683bd51dcc7069374339d778c54403b90e"
+      },
+      "base_to_xgr": {
+        "messageId": "0x47919e62a3811e192d5bfe3c1b70f1309675c6d8f8c2b2ee3a439358276c2160",
+        "sourceTx": "0x7a1b61b106e4d631ac599af322cdd7a54510e110ce747076fd934880e27edc89",
+        "destinationTx": "0x968503696b8a2eebd2c3701fc4c25ef7bde650883e1d81c63a472b0587f333ec"
+      }
+    }
+  },
+  "ilnV314": {
+    "status": "unverified-not-activated",
+    "routes": [
+      {
+        "name": "xgr_to_base",
+        "sourceChain": "xgrchain",
+        "destinationChain": "base",
+        "routeId": null,
+        "gateway": null,
+        "feeVault": null,
+        "validatorFeeWei": null,
+        "governanceTx": null
+      },
+      {
+        "name": "base_to_xgr",
+        "sourceChain": "base",
+        "destinationChain": "xgrchain",
+        "routeId": null,
+        "gateway": null,
+        "feeVault": null,
+        "validatorFeeWei": null,
+        "governanceTx": null
+      }
+    ]
+  }
+}

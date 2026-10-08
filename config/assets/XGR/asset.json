@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "kind": "asset-config",
+  "asset": "XGR",
+  "name": "XGR",
+  "symbol": "XGR",
+  "decimals": 18,
+  "canonical": {
+    "chain": "xgrchain",
+    "representation": "native",
+    "symbol": "XGR"
+  },
+  "representations": [
+    {
+      "chain": "xgrchain",
+      "representation": "native",
+      "symbol": "XGR",
+      "assetAddress": null
+    },
+    {
+      "chain": "base",
+      "representation": "synthetic",
+      "symbol": "wXGR",
+      "assetAddress": null
+    }
+  ],
+  "bridgeModel": "lock-mint-burn-unlock",
+  "notes": "Token identity/topology only. Existing router contract addresses belong to deployments/mainnet/assets/XGR.json, not desired config."
+}
