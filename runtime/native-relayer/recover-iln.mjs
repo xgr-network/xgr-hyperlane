@@ -224,7 +224,10 @@ async function main() {
   assert(operationBlock <= latestSource - confirmationDepth, "source block not sufficiently confirmed");
 
   const historicRoute = await sourceRegistry.getRoute(destinationDomain, routeId, { blockTag: operationBlock });
-  assert(historicRoute.enabled, "route was disabled at source operation block");
+  // A governance action later in the same source block may disable this route.
+  // An emitted fee-qualified operation from the canonical immutable Gateway
+  // proves the route was enabled when bridge() actually executed.
+  // Block-end 'enabled' is NOT a valid test of earlier tx state.
   assert(BigInt(historicRoute.sourceChainId) === originChainId, "historic route source chain mismatch");
   assert(Number(historicRoute.sourceDomain) === originDomain, "historic route source domain mismatch");
   for (const [field, actual, expected] of [
@@ -245,10 +248,10 @@ async function main() {
     BigInt(operation.args.validatorFeeWei) === BigInt(attestation.validatorFeeWei),
     "Gateway operation fee does not match signed fee",
   );
-  assert(
-    BigInt(historicRoute.validatorFeeWei) === BigInt(attestation.validatorFeeWei),
-    "historical fee does not match Gateway operation",
-  );
+  // Gateway.bridge() enforces its native source fee atomically and emits
+  // ILNOperation from its canonical address. Matching it with Dispatch in
+  // the SAME successful receipt is the historical fee proof, not getRoute()
+  // at block end (which can reflect subsequent governance changes).
 
   const dispatches = await sourceMailbox.queryFilter(
     sourceMailbox.filters.Dispatch(
