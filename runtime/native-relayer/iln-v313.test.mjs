@@ -45,7 +45,7 @@ test("Gateway V2 event is indexed by routeId and messageId", () => {
   const iface = new Interface([ILN_OPERATION_EVENT]);
   const fragment = iface.getEvent("ILNOperation");
   assert.equal(fragment.inputs.length, 4);
-  assert.deepEqual(fragment.inputs.map(v=>v.indexed), [true, true, true, false]);
+  assert.deepEqual(fragment.inputs.map(v=>v.indexed), [true, true, true, null]);
   const log=iface.encodeEventLog(fragment,[routeId,msgId,1643,1000n]);
   const decoded=iface.parseLog(log);
   assert.equal(decoded.args.routeId.toLowerCase(),routeId);
