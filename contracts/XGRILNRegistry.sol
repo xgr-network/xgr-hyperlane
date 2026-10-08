@@ -18,6 +18,8 @@ contract XGRILNRegistry is IXGRILNRegistry {
     uint64 public immutable sourceChainId;
     uint32 public immutable sourceDomain;
     IXGRInterchainValidatorSetV2 public immutable governanceRegistry;
+    /// @notice Exact first block for bounded route-discovery event backfill.
+    uint256 public immutable activationBlock;
 
     mapping(uint32 => mapping(bytes32 => RouteRecord)) private routes;
     mapping(uint32 => mapping(bytes32 => bool)) private routeExists;
@@ -79,6 +81,7 @@ contract XGRILNRegistry is IXGRILNRegistry {
         sourceChainId = sourceChainId_;
         sourceDomain = sourceDomain_;
         governanceRegistry = registry;
+        activationBlock = block.number;
     }
 
     function getRoute(uint32 destinationDomain, bytes32 routeId)
