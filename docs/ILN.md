@@ -2,12 +2,14 @@
 
 **Document ID:** XGR-ILN-CONCEPT  
 **Status:** Base-MVP implementation / deployment preparation  
-**Last updated:** 2026-10-06  
+**Last updated:** 2026-10-08  
 **Current production baseline:** XGR Interchain on xgr-node v3.1.1  
-**Target implementation baseline:** xgr-node v3.1.2 or later  
+**Target implementation baseline:** xgr-node v3.1.3 (permissionless quorum API still planned)  
 **Initial ILN corridor:** Base ↔ XGRChain
 **Future spoke:** XDC (deferred from MVP)
-**Deployment runbook:** `docs/ILN_BASE_MVP.md`
+**Deployment runbook:** `docs/ILN_BASE_MVP.md` (earlier Base MVP); v3.1.3-specific implementation notes: `docs/INTERCHAIN_V313_PERMISSIONLESS_RECOVERY.md`
+
+**Specification precedence:** The v3.1.3 normative quorum lifecycle in Sections 11.1-11.5 and 22 supersedes earlier v3.1.2/immutable-Base-MVP descriptions wherever those differ. Existing deployed v3.1.1 bridge behavior is not retroactively changed.
 
 ---
 
@@ -165,6 +167,8 @@ A relayer:
 A relayer does **not** create validity.
 
 Any compatible relayer may deliver a valid message. A validator, third party, user or XGR-operated service may act as relayer.
+
+**v3.1.3 normative extension:** Relayer independence includes **quorum acquisition and recovery**, not merely final submission. Any participant must be able to request and retrieve a current-set quorum using public XGR RPC, reconstruct the source message and Merkle proof from public RPC data, and call destination `Mailbox.process()` with their own gas payer. A proprietary relayer database, API, signing key or watchlist must not be a required input. The XGR-operated relayer is only an optional client of the same public protocol. See Section 11.
 
 ### 3.5 Validator quorum remains the trust anchor
 
@@ -491,6 +495,93 @@ The completed attestation contains or derives:
 
 ILN adds **eligibility conditions before signing**. It does not turn the relayer into part of the quorum.
 
+### 11.1 v3.1.3 north star: permissionless, RPC-first quorum lifecycle (normative)
+
+> Every fee-qualified ILN operation has a canonical identity. **Any participant may request authorization by the current destination Interchain validator set, retrieve the resulting quorum over public RPC, and deliver the same source message to the destination Mailbox independently of any XGR-operated relayer.**
+
+This is one **generic quorum acquisition process**, used for first delivery and for a pending message after validator rotation. **There is no privileged relayer request path, separate re-attestation endpoint, or requirement that a trusted operator manually heals a transfer.** Automatic validator scanners/relayers may proactively trigger the **same** idempotent request state machine for convenience; they are never an exclusive source of requests. No PoS light client is introduced on external chains. As with the existing destination-specific BFT design, the required destination validator quorum is an explicit availability assumption.
+
+The public request is **a hint to perform independently verifiable work**, not permission for validators to sign caller-supplied bytes. It must never accept arbitrary checkpoint payloads, Merkle roots, source addresses, fees, signer sets or validator-set IDs as signing authority.
+
+### 11.2 Public protocol API (v3.1.3 target, NOT YET IMPLEMENTED)
+
+A candidate JSON-RPC interface is:
+
+~~~text
+xgr_requestInterchainQuorum({
+  sourceChainId, sourceDomain, destinationDomain, routeId, messageId
+})
+  -> { requestId, setId, status }
+
+xgr_getInterchainQuorum(requestId)
+  -> { requestId, setId, status, attestation? }
+~~~
+
+The canonical route key is `(sourceChainId, sourceDomain, destinationDomain, routeId)`. The unique **quorum-work key** additionally includes `messageId` and the **current destination registry `setId`**. The `requestId` must be derived reproducibly with a domain-separated, versioned canonical encoding of that key. Client-provided `requestId` or `setId` must not override canonical on-chain state. The `messageId` always refers to the **original** Hyperlane message; rotation never starts a second lock/burn or dispatch.
+
+A request may return or later resolve to:
+
+| Status | Meaning | New BLS work? |
+| --- | --- | --- |
+| `NOT_FOUND` | No matching confirmed canonical source operation | No |
+| `NOT_ELIGIBLE` | Gateway/route/fee/message/proof validation failed | No |
+| `ALREADY_DELIVERED` | Destination Mailbox confirms `delivered(messageId) == true` | No |
+| `READY` | Completed quorum under the **current** destination set is available | No |
+| `PENDING` | One current-set quorum job is admitted or already in progress | At most one logical job |
+| `STALE_SET` | An earlier `requestId` belongs to a retired set | No; obtain current-set request |
+| `TEMPORARILY_UNAVAILABLE` | Required RPC, finalized source data, or destination delivery/set state cannot be verified | No; fail closed and retry |
+
+The RPC request itself carries **no per-call protocol fee**. The authorization's economic prerequisite is the **source-native validator fee paid atomically with the original canonical Gateway operation**. A validator-set rotation does not charge that fee again. The executor pays destination gas independently.
+
+Completed quorums must remain retrievable through **public** RPC, including after node restarts and across quorum-capable nodes. The existing read-only `xgr_getILNInterchainAttestation(routeName,messageId)` is a legacy retrieval interface, not a substitute for the new request lifecycle. RPC names above are proposed protocol targets until Node implementation and tests finalize them.
+
+### 11.3 Mandatory admission, signing and delivery-state checks
+
+Before a validator signs, and **independently on each validator**, the implementation must:
+
+1. Resolve the exact canonical route and original confirmed source Gateway event for `messageId` (no direct-Warp-router bypass), matching source/destination domains and route ID.
+2. Verify the original atomic positive native validator fee, source transaction and canonical Mailbox dispatch, confirmed source block, message-specific Merkle inclusion and the historically applicable route configuration. The fee must be evaluated against the **original operation**, not changed retroactively after initiation.
+3. Resolve the **current destination-specific validator set** and the node's present XGR PoS eligibility/BLS key; reject any stale, missing or mismatched membership.
+4. Query the **destination Mailbox** for `delivered(messageId)`. If delivered, return `ALREADY_DELIVERED` without enqueueing, rebroadcasting or signing. If the delivery state **cannot be verified**, fail closed with `TEMPORARILY_UNAVAILABLE`; never treat RPC failure as `false`.
+5. Consult the persistent bounded work index for `(routeKey, messageId, currentSetId)`. Return an existing `READY` result or `PENDING` job rather than starting another. Check delivery state and set ID **again immediately before local signing** and before finalizing a quorum; discard obsolete aggregates on rotation.
+
+The destination v3.1.3 ILN ISM must reject `attestation.setId != destinationRegistry.setId()`. Historical validator-set snapshots/signatures remain audit data but cannot authorize new settlement. Quorum creation and delivery are not atomic across chains; therefore a concurrent delivery could still race with the final pre-sign check. That race must be harmless through single-message idempotency and the destination Mailbox's duplicate-delivery protection; do not claim an impossible cross-chain atomic delivered check.
+
+### 11.4 Validator rotation and recovery: demand-driven, never bulk
+
+**Do not automatically regenerate all old quorums when `setId` changes.** Existing archived attestations may be retained as history; old-set quorums become invalid for v3.1.3 destination settlement immediately.
+
+For an **undelivered** previously fee-qualified message, an ordinary call to `xgr_requestInterchainQuorum` uses the current `setId` and may create exactly one new logical quorum job. It must preserve the original message ID, source block, source fee and Merkle evidence. Validators independently re-verify the same operation. There must be **no new source lock, burn, dispatch, or validator fee**; a new quorum only restores delivery eligibility. The result is consumed with the same public `get`/destination `Mailbox.process` path as first delivery.
+
+A delivered message must **not** be re-attested when the set rotates, even if it has hundreds of earlier completed quorums. This rule also applies to unsolicited automatic scanners. Inability to reach the destination Mailbox blocks *new signatures*, rather than assuming the transfer is undelivered.
+
+A finalized lock/burn on the source chain cannot be rolled back merely because the destination ISM rejected stale metadata. Safety requires eventual public re-attestation and delivery under the stated quorum/chain-availability assumptions; this is **not** an atomic two-chain rollback guarantee.
+
+### 11.5 Anti-spam and bounded resource use (mandatory)
+
+Permissionless RPC access must **not** become an unlimited free BLS signing service:
+
+- **Cheap rejection first:** bounded-size input validation, known-route checks, lookup in a bounded persistent index and positive/negative caches, and a bounded indexed Gateway-log search precede costly historical RPC reads, P2P gossip, and BLS work. Arbitrary/random message IDs must never trigger an unbounded from-genesis scan.
+- **Distributed idempotency:** a single logical request and bounded gossip/vote work per `(routeKey, messageId, setId)` across restarts, concurrent RPC callers and validator peers. Duplicate callers receive `PENDING` or `READY`, not fresh signing work.
+- **Delivered replay defense:** destination `delivered(messageId)` is checked before enqueue, immediately before signing and when answering recovery calls. **No bulk refresh of delivered or archived messages** after membership changes.
+- **Bounded capacity:** RPC rate limits, bounded per-peer/per-route admission, concurrency limits, queue depth, CPU/remote-read budgets, request expiry/retry backoff and log-index retention policy. The system must recover safely after restart and permit eventual completion of a legitimate old undelivered message; do not impose an arbitrary age cutoff.
+- **Economic policy:** only an actually paid, fee-qualified Gateway operation may consume signing resources. A nominal `1 wei` launch fee is **not** economically meaningful DoS protection; realistic public deployment needs reviewed sustainable fees and/or robust capacity controls. Fee policy changes must not retroactively strand previously valid locked/burned operations.
+- **DoS-independent consensus:** RPC/gossip/signing traffic must not block XGRChain IBFT consensus or chain liveness. RPC availability may be distributed; no single hosted RPC endpoint is protocol-critical.
+
+Governance, validator membership ADD/REMOVE, fee changes and route administration may reuse low-level quorum cryptography and transport, but **must keep their own authorization/nonce/deadline checks**. A permissionless bridge-request endpoint does not turn governance into permissionless execution.
+
+### 11.6 v3.1.3 release gate
+
+No claim of permissionless or self-healing ILN v3.1.3 readiness until automated tests show:
+- a user without XGR relayer access obtains a first-transfer quorum via public RPC, reconstructs publicly verifiable metadata and successfully calls `Mailbox.process` with an independent gas payer;
+- a rotation invalidates old-set metadata, while **the same original undelivered message** obtains a new current-set quorum via **the same RPC** and is delivered once;
+- a previously delivered transfer cannot cause post-rotation BLS work, even under repeated/parallel requests for historical messages;
+- random IDs, unqualified direct-router messages, invalid fees, unreachable destination RPCs and duplicate requests fail closed with bounded work;
+- source confirmation/reorg, repeated rotation during aggregation, validator restart, RPC node restart, attestation retrieval from an independent node, and relayer shutdown are handled without loss or duplicate delivery.
+
+**Implementation status on 2026-10-08:** the v3.1.3 destination ILN ISM current-set check is committed on the feature branch; the generic public quorum-request RPC, request coordination and delivered-aware signing/admission are **not yet implemented or verified end to end**. Do not infer functionality from this normative specification.
+
+
 ---
 
 ## 12. Route registry
@@ -584,7 +675,7 @@ All Interchain validators must be upgraded before any ILN route is activated. Th
 
 ## 13. Relayer independence
 
-A completed ILN attestation should be consumable by any compatible relayer.
+A completed ILN attestation must be consumable by any compatible executor. Under the v3.1.3 rule in Section 11, **obtaining the quorum itself** must also be possible without any operator-specific relayer.
 
 ~~~text
 source transaction
@@ -600,9 +691,9 @@ XGR / validator / third-party / user relayer
 destination Mailbox.process()
 ~~~
 
-A relayer outage delays delivery.
+A relayer outage may delay convenient automatic delivery but **must not block permissionless quorum request, retrieval or recovery**. A participant uses public XGR/source/destination RPC to request or retrieve the current-set quorum and submit the same message with any gas-paying wallet.
 
-It must not invalidate the source transaction or require the user to recover funds through a trusted operator.
+The original finalized source lock/burn is not rolled back when delivery fails; the same message must remain eligible for a renewed quorum if it is genuinely undelivered. This requires the delivered-aware generic RPC path in Section 11; that path is a v3.1.3 release gate and is **not yet implemented**.
 
 ---
 
@@ -817,7 +908,7 @@ A relayer cannot mint or unlock XGR without valid destination security verificat
 
 ### Validator authorization
 
-Only the active XGR Interchain validator quorum can produce a valid native attestation.
+Only the active destination-specific XGR Interchain validator quorum may authorize a **new v3.1.3 ILN destination settlement**. After rotation, retired sets have no settlement authority; any still-undelivered source operation must be re-attested by the current set.
 
 ### Route isolation
 
@@ -827,13 +918,17 @@ An unrelated contract must not be able to convert XGR validator work into a vali
 
 An ILN operation must not become eligible for validator signing unless the required source-native validator fee condition is satisfied.
 
-### Relayer independence
+### Permissionless quorum requests and relayer independence
 
-A specific relayer operator is never part of message validity.
+A specific relayer operator is never part of message validity, quorum creation, attestation retrieval or recovery. The same public RPC-first quorum process must serve initial delivery and post-rotation pending-message delivery.
 
 ### Existing bridge compatibility
 
 Introducing ILN must not silently weaken or change the security behavior of the existing XGRChain ↔ Base production route.
+
+### Anti-spam and finality-sensitive recovery
+
+A request without a confirmed canonical fee-paid Gateway operation must never consume BLS signing work. Already-delivered messages must never trigger a replacement quorum after rotation. Unknown destination delivery status must fail closed. Requests must be deduplicated per canonical route/message/current set and bounded by rate limits, queues and cheap admission.
 
 ### Fail closed
 
@@ -915,6 +1010,10 @@ with:
 | xgr-node v3.1.2 message-specific ILN eligibility | implemented and release validation in progress |
 | Base ↔ XGR ILN route | deployment/E2E pending |
 | XDC spoke | deferred |
+| v3.1.3 ISM current-set-only settlement rule | committed on feature branch; not deployed |
+| v3.1.3 generic permissionless quorum request/get RPC | **specified; not implemented** |
+| delivered-aware admission and bounded anti-spam/idempotency | **specified; not implemented** |
+| independent post-rotation same-message recovery E2E | **required before activation; not yet verified** |
 
 ---
 
@@ -932,6 +1031,12 @@ native XGR settlement on XGRChain
 XGR validator BLS security
       +
 native-source-chain validator rewards
+      +
+permissionless quorum request/retrieval
+      +
+current destination validator-set authority
+      +
+delivered-aware idempotent recovery
       +
 replaceable relayers
 ~~~
