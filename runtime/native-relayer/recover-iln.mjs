@@ -182,11 +182,54 @@ async function main() {
   ]);
   assert(Number(ismDomain) === destinationDomain, "ISM destination domain mismatch");
   const destinationSet = new Contract(destinationISMRegistry, destSetAbi, destination);
-  const [currentSetId, signatureFormat, attestation] = await Promise.all([
+  const [currentSetId, signatureFormat] = await Promise.all([
     destinationSet.setId(),
     destinationSet.verifierKeyFormat(),
-    attestations.send("xgr_getILNInterchainAttestation", [routeName, id]),
   ]);
+  let attestation;
+  try {
+    attestation = await attestations.send("xgr_getILNQuorumAttestation", [routeName, id, Number(currentSetId)]);
+  } catch {
+    // First-time delivery and post-rotation recovery use exactly the same
+    // public request path. No relayer or operator-specific signing endpoint.
+    let old;
+    try {
+      old = await attestations.send("xgr_getILNInterchainAttestation", [routeName, id]);
+    } catch {
+      old = null;
+    }
+    let operationBlock = old ? Number(old.sourceBlockNumber) : 0;
+    if (!Number.isSafeInteger(operationBlock) || operationBlock <= 0) {
+      const startBlock = Number(await sourceGateway.activationBlock());
+      const confirmed = await origin.getBlockNumber() - confirmationDepth;
+      assert(Number.isSafeInteger(startBlock) && startBlock > 0, "invalid gateway activation block");
+      for (let from = startBlock; from <= confirmed; from += chunkSize) {
+        const to = Math.min(confirmed, from + chunkSize - 1);
+        const events = await sourceGateway.queryFilter(
+          sourceGateway.filters.ILNOperation(routeId, id, destinationDomain), from, to,
+        );
+        if (events.length > 0) {
+          assert(events.length === 1 && operationBlock === 0, "duplicate Gateway operations");
+          operationBlock = events[0].blockNumber;
+        }
+      }
+    }
+    assert(operationBlock > 0, "canonical source Gateway operation not found");
+    await attestations.send("xgr_requestILNQuorum", [routeName, id, operationBlock]);
+    try {
+      attestation = await attestations.send("xgr_getILNQuorumAttestation", [routeName, id, Number(currentSetId)]);
+    } catch {
+      console.log(JSON.stringify({
+        status: "PENDING",
+        messageId: id,
+        route: routeName,
+        sourceBlockNumber: operationBlock,
+        currentSetId: String(currentSetId),
+        note: "Public quorum requested. Rerun the same command after the validators finish their independent source and destination checks.",
+      }, null, 2));
+      return;
+    }
+  }
 
   eq("attestation route name", attestation.chain, routeName);
   eq("attestation message ID", attestation.authorizedMessageId, id);
