@@ -2,13 +2,14 @@
 // Non-mutating validator for the desired chain/asset configuration and the
 // separately observed mainnet deployment manifests.
 import { readFileSync, readdirSync } from "node:fs";
-import { resolve, join, dirname, basename } from "node:path";
+import { resolve, join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const isAddress = (v) => typeof v === "string" && /^0x[0-9a-fA-F]{40}$/.test(v) && !/^0x0{40}$/.test(v);
 const isHash = (v) => typeof v === "string" && /^0x[0-9a-fA-F]{64}$/.test(v) && !/^0x0{64}$/.test(v);
 const isCount = (v) => Number.isSafeInteger(v) && v > 0;
+const positiveWei = (v) => typeof v === "string" && /^[1-9]\d*$/.test(v);
 const same = (a, b) => typeof a === "string" && typeof b === "string" && a.toLowerCase() === b.toLowerCase();
 
 function readJSON(root, relative) {
@@ -88,9 +89,25 @@ export function validateCatalog(catalog) {
       prefix + ": wrong observedInfrastructure path");
     check(observed.hyperlaneCore && isAddress(observed.hyperlaneCore.mailbox) &&
       isAddress(observed.hyperlaneCore.merkleTreeHook), prefix + ": missing observed Mailbox/MerkleTreeHook");
-    check(observed.ilnV314 && observed.ilnV314.status === "unverified-not-activated" &&
-      observed.ilnV314.sourceRegistry === null && observed.ilnV314.destinationIsmV2 === null,
-      prefix + ": do not claim unverified ILN v3.1.4 infrastructure as deployed");
+    const iln = observed.ilnV314;
+    check(iln && ["unverified-not-activated", "verified-deployed"].includes(iln.status),
+      prefix + ": unknown ILN infrastructure verification status");
+    if (iln?.status === "unverified-not-activated") {
+      check(iln.sourceRegistry === null && iln.destinationRegistryV2 === null &&
+        iln.destinationIsmV2 === null && iln.blsVerifier === null,
+        prefix + ": do not claim unverified ILN v3.1.4 infrastructure as deployed");
+    } else if (iln?.status === "verified-deployed") {
+      check(isCount(iln.verifiedAtBlock), prefix + ": verified infrastructure requires block evidence");
+      for (const key of ["sourceRegistry","destinationRegistryV2","destinationIsmV2","blsVerifier"]) {
+        check(iln[key] === null || isAddress(iln[key]), prefix + ": invalid verified " + key);
+      }
+      check(isAddress(iln.sourceRegistry) || isAddress(iln.destinationIsmV2),
+        prefix + ": verified infrastructure requires a deployed source registry or destination ISM");
+      if (isAddress(iln.destinationIsmV2)) {
+        check(isAddress(iln.destinationRegistryV2) && isAddress(iln.blsVerifier),
+          prefix + ": destination ISM requires verified registry and verifier");
+      }
+    }
   }
   const names = new Set();
   check(Object.keys(assets).length > 0, "no asset configurations");
@@ -99,7 +116,7 @@ export function validateCatalog(catalog) {
     const { metadata, routes, mainnet, deployment } = asset;
     check(metadata.kind === "asset-config" && metadata.schemaVersion === 1 && metadata.asset === id,
       p + ": invalid metadata schema/identity");
-    check(metadata.symbol && isCount(metadata.decimals) && metadata.decimals <= 36, p + ": invalid decimals or symbol");
+    check(metadata.symbol && Number.isSafeInteger(metadata.decimals) && metadata.decimals >= 0 && metadata.decimals <= 36, p + ": invalid decimals or symbol");
     check(metadata.canonical && chains[metadata.canonical.chain], p + ": unknown canonical chain");
     check(Array.isArray(metadata.representations) && metadata.representations.length >= 2,
       p + ": missing representations");
@@ -110,7 +127,12 @@ export function validateCatalog(catalog) {
       repChains.add(representation.chain);
       check(["native", "synthetic", "collateral"].includes(representation.representation),
         p + ": unsupported representation type");
-      check(representation.assetAddress === null, p + ": desired config must not declare observed token address");
+      // Canonical ERC-20 contract address is an asset identity, not a claim
+      // that this route's gateway/ISM has been deployed.
+      check(representation.representation === "native"
+        ? representation.assetAddress === null
+        : representation.assetAddress === null || isAddress(representation.assetAddress),
+        p + ": representation address must be a valid ERC-20 or null for native");
     }
     check(routes.schemaVersion === 1 && routes.kind === "asset-routes" &&
       routes.asset === id && routes.network === "mainnet" && routes.protocol === "ILN-v3.1.4",
@@ -127,12 +149,15 @@ export function validateCatalog(catalog) {
         p + ": invalid route chain endpoints " + route.name);
       check(["pending-governance", "quorum-activated"].includes(route.activation),
         p + ": unknown route activation " + route.name);
+      // Before deployment a route may be fully unspecified. Once proposed,
+      // route ID and fee are an inseparable, explicit pair. Governance alone
+      // can activate it; JSON cannot.
       if (route.activation === "pending-governance") {
-        check(route.routeId === null && route.validatorFeeWei === null,
-          p + ": unapproved ILN route must not invent a route ID or fee: " + route.name);
+        check((route.routeId === null && route.validatorFeeWei === null) ||
+          (isHash(route.routeId) && positiveWei(route.validatorFeeWei)),
+          p + ": unapproved ILN route requires null fields or a complete route ID and fee: " + route.name);
       } else {
-        check(isHash(route.routeId) && typeof route.validatorFeeWei === "string" &&
-          /^[1-9]\d*$/.test(route.validatorFeeWei),
+        check(isHash(route.routeId) && positiveWei(route.validatorFeeWei),
           p + ": activated ILN route must have verified nonzero route ID and source-native fee");
       }
     }
@@ -141,24 +166,53 @@ export function validateCatalog(catalog) {
       mainnet.routeManifest === p + "/routes.json" &&
       mainnet.deploymentManifest === "deployments/mainnet/assets/" + id + ".json",
       p + ": mainnet config references wrong manifests");
-    check(mainnet.ilnV314Activation === "not-authorized",
-      p + ": route activation must not be implied by desired config");
+    check(["not-authorized", "governance-confirmed"].includes(mainnet.ilnV314Activation),
+      p + ": unknown mainnet ILN authorization status");
     check(deployment.kind === "asset-deployment" && deployment.schemaVersion === 1 &&
       deployment.asset === id && deployment.network === "mainnet",
       p + ": missing observed asset deployment");
-    check(deployment.ilnV314 && deployment.ilnV314.status === "unverified-not-activated",
-      p + ": never treat ILN v3.1.4 as deployed without separately verified chain state");
+    check(deployment.ilnV314 && ["unverified-not-activated",
+      "deployed-pending-governance", "active"].includes(deployment.ilnV314.status),
+      p + ": unknown ILN v3.1.4 asset deployment state");
     const observedRoutes = deployment.ilnV314?.routes || [];
     for (const route of routes.routes || []) {
       const observed = observedRoutes.find((item) => item.name === route.name);
       check(observed && observed.sourceChain === route.sourceChain &&
         observed.destinationChain === route.destinationChain, p + ": missing observed route shell " + route.name);
       if (!observed) continue;
-      check(observed.routeId === null && observed.gateway === null && observed.feeVault === null &&
-        observed.validatorFeeWei === null && observed.governanceTx === null,
-        p + ": unverified ILN route must have no on-chain addresses/route IDs");
+      const empty = observed.routeId === null && observed.gateway === null &&
+        observed.feeVault === null && observed.validatorFeeWei === null &&
+        observed.governanceTx === null;
+      const deployed = isHash(observed.routeId) && isAddress(observed.gateway) &&
+        isAddress(observed.feeVault) && positiveWei(observed.validatorFeeWei);
+      if (route.routeId === null) {
+        check(empty, p + ": unverified ILN route must have no on-chain addresses/route IDs");
+      } else {
+        check(deployed && same(observed.routeId, route.routeId) &&
+          observed.validatorFeeWei === route.validatorFeeWei,
+          p + ": deployed ILN route must match its route ID, gateway, vault and fee");
+      }
+      if (route.activation === "pending-governance") {
+        check(observed.governanceTx === null,
+          p + ": pending route must not claim governance activation");
+      } else {
+        check(deployed && isHash(observed.governanceTx),
+          p + ": activated ILN route requires on-chain governance transaction evidence");
+        const origin= infrastructure[route.sourceChain]?.ilnV314;
+        const target= infrastructure[route.destinationChain]?.ilnV314;
+        check(origin?.status === "verified-deployed" && isAddress(origin.sourceRegistry) &&
+          target?.status === "verified-deployed" && isAddress(target.destinationIsmV2),
+          p + ": activated route requires verified source registry and destination ISM");
+      }
     }
     check(observedRoutes.length === (routes.routes || []).length, p + ": desired and observed routes differ");
+    const allUnconfigured = (routes.routes || []).every((r) => r.routeId === null);
+    const anyActive = (routes.routes || []).some((r) => r.activation === "quorum-activated");
+    check(mainnet.ilnV314Activation === (anyActive ? "governance-confirmed" : "not-authorized"),
+      p + ": activation summary does not match route governance state");
+    check(deployment.ilnV314?.status ===
+      (anyActive ? "active" : allUnconfigured ? "unverified-not-activated" : "deployed-pending-governance"),
+      p + ": deployment state does not match observed route readiness");
   }
   // Preserve the actual v3.1.1 XGRChain/Base mainnet inventory; never fabricate
   // v3.1.4 contract addresses from these older deployed Warp routers.
