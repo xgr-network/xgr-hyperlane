@@ -1,37 +1,98 @@
+import {loadXetaOverview,loadXetaAsset,loadXetaTransfers,loadMarketPrice,aggregate,displayPrice,displayUnix} from "./ui-data.mjs";
 import {manifestRoute,connectWallet,switchChain,quoteBridge,readAllowance,approveAmount,sendBridge,waitReceipt,messageIdFromReceipt,isDelivered,formatUnits,shorten} from "./protocol.mjs";
 const el=document.querySelector("#app"),connect=document.querySelector("#connect");
-const state={catalog:null,account:null,quote:null,quoteKey:null,transfer:null,busy:false};
+const state={catalog:null,assetId:"XGR",account:null,quote:null,quoteKey:null,transfer:null,busy:false,indexed:null,assetStats:{},transfers:{},prices:{},apiState:"loading"};
 const names={xgrchain:"XGRChain",base:"Base",polygon:"Polygon",arbitrum:"Arbitrum"};
-const routeName=r=>names[r.sourceChain]+" → "+names[r.destinationChain];
+const routeName=r=>(names[r.sourceChain]||r.sourceChain)+" → "+(names[r.destinationChain]||r.destinationChain);
 const x=raw=>String(raw??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const asset=()=>state.catalog.assets.XGR;
+const asset=()=>state.catalog.assets[state.assetId]||state.catalog.assets.XGR;
+const profile=id=>state.catalog.assets[id]?.profile||{name:id,slug:id.toLowerCase(),shortDescription:"",description:"",categories:[],tags:[],links:{},branding:{}};
+const tokenUrl=id=>"/token/"+encodeURIComponent(profile(id).slug);
+const allAssets=()=>Object.keys(state.catalog.assets);
 const route=r=>manifestRoute(state.catalog,asset(),r);
 const routes=()=>asset().routes.routes;
 const active=()=>routes().filter(r=>route(r.name).allowed).length;
+const activeFor=id=>(state.catalog.assets[id]?.routes?.routes||[]).filter(rt=>manifestRoute(state.catalog,state.catalog.assets[id],rt.name).allowed).length;
 const path=()=>decodeURIComponent(location.pathname).replace(/\/+$/,"")||"/";
 const btn=(url,label,alt=false)=>'<a data-nav href="'+url+'" class="btn'+(alt?" alt":"")+'">'+label+'</a>';
 const tag=r=>'<span class="tag">'+(route(r.name).allowed?"Verified":"Pending governance")+'</span>';
 const fmt=(n,dec=18)=>formatUnits(n,dec,10);
 const note=t=>'<div class="notice">'+t+'</div>';
+function projectLogo(id){
+ const p=profile(id),url=p.branding?.logoUrl;
+ const initial=x(id.slice(0,1));
+ return '<span class="logo">'+(typeof url==="string"&&url.startsWith("https://")?
+  '<img class="token-logo" alt="'+x(p.name)+' logo" src="'+x(url)+'" loading="lazy">':initial)+'</span>';
+}
+function tokenCard(id){
+ const p=profile(id);
+ return '<div class="card token-link">'+projectLogo(id)+'<div><h3>'+x(p.name)+' ('+x(id)+')</h3>'+
+  '<p class="muted">'+x(p.shortDescription)+'</p>'+
+  '<small class="muted">'+activeFor(id)+' of '+state.catalog.assets[id].routes.routes.length+' routes active</small><br>'+
+  btn(tokenUrl(id),"Open token & bridge")+'</div></div>';
+}
+function metric(label,value,noteText){
+ return '<div class="card"><small>'+x(label)+'</small><strong>'+x(value)+'</strong><small>'+x(noteText)+'</small></div>';
+}
+function summaryFor(id,period){
+ const stat=state.assetStats[id];
+ return aggregate(stat?.[period]||null,state.catalog.assets[id].metadata.decimals);
+}
+function indexedCount(id,period){
+ const s=summaryFor(id,period);
+ return s?s.count.toLocaleString("en-US"):"—";
+}
+function amountFor(id,period){
+ const s=summaryFor(id,period);
+ if(!s)return "—";
+ if(!s.count)return "0 observed";
+ return s.amount+" "+id+(s.complete?"":" (partial)");
+}
+function projectLinks(id){
+ const links=profile(id).links||{};
+ const titles={website:"Website",explorer:"Explorer",github:"GitHub",docs:"Documentation",whitepaper:"Whitepaper",x:"X",linkedin:"LinkedIn",telegram:"Telegram",discord:"Discord"};
+ return Object.entries(titles).filter(([key])=>typeof links[key]==="string"&&links[key].startsWith("https://"))
+  .map(([key,title])=>'<a class="pill-link" target="_blank" rel="noopener noreferrer" href="'+x(links[key])+'">'+title+' ↗</a>').join(" ");
+}
+function indexerNotice(){
+ if(state.apiState==="ready")return '<p class="status">Source: existing XGR Explorer XETA event index. Source-chain coverage is limited to verified configured Gateways; USD TVL and global volume are not inferred.</p>';
+ if(state.apiState==="error")return '<p class="status">Explorer XETA index currently unavailable. No activity values are inferred.</p>';
+ return '<p class="status">Loading verified bridge events from the Explorer…</p>';
+}
 function overview(){
+ const ids=allAssets();
  return '<div class="eyebrow">XGR EVM Token Alliance</div><h1>One ecosystem.<br>Every connected token.</h1>'+
- '<p class="lead">Discover assets, explore networks and move tokens through the quorum-governed XGRChain hub. Every token page includes its own bridge.</p>'+
- '<div class="actions">'+btn("/token/xgr","Explore XGR token")+btn("/markets","Browse markets",true)+'</div>'+
- '<div class="cards">'+[
- ["Assets",Object.keys(state.catalog.assets).length,"Published catalog"],
- ["Active routes",active(),"Quorum-approved, verified"],
- ["Bridged value","—","Verified indexer pending"],
- ["24h volume","—","Verified indexer pending"]
- ].map(v=>'<div class="card"><small>'+v[0]+'</small><strong>'+v[1]+'</strong><small>'+v[2]+'</small></div>').join("")+'</div>'+
- '<section class="section"><div class="eyebrow">Open Interchain Infrastructure</div><h2>XGRChain connects the network</h2><p class="muted">Base ↔ XGRChain ↔ Polygon / Arbitrum. Spoke-to-spoke transfers are two independent hops via XGRChain; no gasless forwarder is deployed.</p><div class="card"><h3>Configured routes</h3>'+routes().map(r=>'<div class="pair"><span>'+routeName(r)+'</span>'+tag(r)+'</div>').join("")+'</div></section>'+
- '<section class="section"><h2>Explore token assets</h2><div class="card token-link"><span class="logo">X</span><div><h3>XGR / wXGR</h3><p class="muted">Native on XGRChain, planned synthetic representations on three EVM chains</p>'+btn("/token/xgr","Open token and bridge")+'</div></div></section>'+
- '<section class="section"><h2>Open to projects</h2><p class="lead">Alliance applications and standard listing are free. Token integration and route activation require independent validator-quorum approval.</p>'+btn("/join","Join the Alliance")+'</section>';
+ '<p class="lead">Explore token projects, validator-governed interchain routes, and verified bridge activity. Every asset has its own profile and transfer interface.</p>'+
+ '<div class="actions">'+btn(tokenUrl("XGR"),"Explore XGR token")+btn("/markets","Browse markets",true)+'</div>'+
+ '<div class="cards">'+metric("Published assets",String(ids.length),"Token profiles")+
+  metric("Verified routes",String(ids.reduce((sum,id)=>sum+activeFor(id),0)),"Quorum-governed")+
+  metric("24h source transfers",indexedCount("XGR","last24h"),"Observed XGR Gateway messages")+
+  metric("24h XGR transferred",amountFor("XGR","last24h"),"Unknown principal amounts excluded")+'</div>'+
+ indexerNotice()+
+ '<section class="section"><div class="eyebrow">Interchain network</div><h2>XGRChain hub</h2><p class="muted">External-to-external movement consists of two independent transfers through XGRChain. The future automated second-hop sponsor is not deployed.</p>'+
+ '<div class="card"><h3>XGR configured routes</h3>'+state.catalog.assets.XGR.routes.routes.map(rt=>
+  '<div class="pair"><span>'+x(routeName(rt))+'</span><span class="tag">'+(manifestRoute(state.catalog,state.catalog.assets.XGR,rt.name).allowed?"Verified":"Pending governance")+'</span></div>').join("")+'</div></section>'+
+ '<section class="section"><div class="eyebrow">Explore projects</div><h2>Token directory</h2><div class="project-grid">'+ids.map(tokenCard).join("")+'</div></section>'+
+ '<section class="section"><h2>Join the Alliance</h2><p class="lead">Free onboarding and integration proposals, with independent validator approval before any route can become active.</p>'+btn("/join","Join the Alliance")+'</section>';
 }
 function markets(){
- return '<div class="eyebrow">Discovery</div><h1>Token markets</h1><p class="lead">Browse bridgeable and planned assets. Trading data will be added using clearly identified, timestamped sources.</p>'+
- '<label class="field" for="search">Find a token</label><input id="search" placeholder="Search by symbol or token name">'+
- '<div class="card section" style="overflow:auto"><table class="table"><thead><tr><th>Token</th><th>Price</th><th>Market cap</th><th>24h trading volume</th><th>Verified routes</th></tr></thead><tbody id="market-row"><tr><td><a href="/token/xgr" data-nav>XGR / wXGR</a></td><td>—</td><td>—</td><td>—</td><td>'+active()+' / '+routes().length+'</td></tr></tbody></table></div>'+
- '<p class="muted">Unverified market data are never inferred from bridge activity or token supply.</p>';
+ const ids=allAssets();
+ return '<div class="eyebrow">Discovery</div><h1>Token markets</h1>'+
+ '<p class="lead">Project listings and real indexed bridge activity. Trading volume and market capitalization remain separate from transfer events.</p>'+
+ '<label class="field" for="search">Find a project</label><input id="search" placeholder="Symbol, name, category or tag">'+
+ '<div class="card section" style="overflow:auto"><table class="table"><thead><tr>'+
+ '<th>Token</th><th>Market price</th><th>Market cap</th><th>24h DEX volume</th><th>24h bridge transfers</th><th>Bridge volume</th><th>Verified routes</th>'+
+ '</tr></thead><tbody id="market-row">'+ids.map(id=>marketRow(id)).join("")+'</tbody></table></div>'+
+ indexerNotice();
+}
+function marketRow(id){
+ const p=profile(id);
+ const symbol=x(id),data=state.catalog.assets[id];
+ return '<tr data-filter="'+x((p.name+" "+id+" "+(p.categories||[]).join(" ")+" "+(p.tags||[]).join(" ")).toLowerCase())+'">'+
+ '<td><a href="'+tokenUrl(id)+'" data-nav>'+symbol+' · '+x(p.name)+'</a></td>'+
+ '<td>'+x(displayPrice(state.prices[id]))+'</td><td>—</td><td>—</td>'+
+ '<td>'+x(indexedCount(id,"last24h"))+'</td><td>'+x(amountFor(id,"last24h"))+'</td>'+
+ '<td>'+activeFor(id)+" / "+data.routes.routes.length+'</td></tr>';
 }
 function token(){
  return '<div class="columns"><article><a href="/markets" data-nav class="muted">← All tokens</a>'+
