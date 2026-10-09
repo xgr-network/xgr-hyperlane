@@ -11,4 +11,4 @@ XETAGuardedNativeWarpRouter.sol: thin native XGR custody adapter on XGRChain.
 XETAGuardedSyntheticWarpRouter.sol: thin synthetic token mint/burn adapter for wXGR on external EVM chains.
 Pinned Hyperlane 11.1.0 is installed by contract CI. Fork and live E2E validation remain deployment gates.
 
-No V1/legacy implementations are active in this branch. See docs/XETA_SPEC_V314.md.
+Only the current XETA v3.1.4 interfaces and implementations belong in this source tree. See docs/XETA_SPEC_V314.md.
