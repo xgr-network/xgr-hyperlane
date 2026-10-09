@@ -15,7 +15,7 @@ Date 2026-10-09. Normative for new routes, not an on-chain activation.
 
 ## Gas and security
 - Gateway bridge removes redundant pre-dispatch validator-set reads, while atomic FeeVault.allocate checks them and reverts original lock/burn if invalid.
-- FeeVault reads recipient-only V2 registry getter where available and falls back to original full getter for V2 compatibility; distribute micro-fees with only nonzero storage writes. Rotating remainder remains unchanged.
+- FeeVault requires the address-only RegistryV2 `getFeeRecipients()` getter and fails closed without it; distribute micro-fees with only nonzero storage writes. Rotating remainder remains unchanged.
 - No direct Warp invocation for new assets. Validate full upstream router compatibility, fee-on-transfer/rebasing token exclusion, supply conservation, Merkle source receipts, actual EIP-2537 on each supported mainnet, recovery after validators rotate, and one-time FeeVault payouts.
 - Benchmark gas with 3, 5, 10, 25 validators and real two-hop receipts; do not infer total transaction costs from Forge test-function gas.
 - Shared chain infrastructure is independent of assets; token onboarding only adds asset manifests, routers, gateways, fees, and governance decisions.

@@ -5,6 +5,18 @@ import {Test} from "forge-std/Test.sol";
 import {XGRILNFeeVault} from "../contracts/XGRILNFeeVault.sol";
 import {MockLocalGovernanceRegistry} from "../contracts/test/MockLocalGovernanceRegistry.sol";
 
+/// @dev Intentionally incomplete to prove new XETA vaults fail closed.
+contract IncompleteValidatorRegistry {
+    function getValidatorSet() external pure returns (
+        address[] memory validators, bytes[] memory keys, uint64 setId
+    ) {
+        validators = new address[](1);
+        keys = new bytes[](1);
+        validators[0] = address(0x101);
+        setId = 1;
+    }
+}
+
 contract XGRILNFeeVaultTest is Test {
     MockLocalGovernanceRegistry internal registry;
     XGRILNFeeVault internal vault;
@@ -70,6 +82,18 @@ contract XGRILNFeeVaultTest is Test {
         assertEq(vault.recipientCount(), 2);
         _snapshot(2, 2, _members(B, C));
         assertEq(vault.recipientCount(), 2);
+    }
+
+    function testRejectsIncompleteValidatorRegistryWithoutV2FeeGetter() public {
+        IncompleteValidatorRegistry incomplete = new IncompleteValidatorRegistry();
+        XGRILNFeeVault separateVault = new XGRILNFeeVault(
+            address(incomplete), GATEWAY, ROUTE, 8453
+        );
+        vm.expectRevert();
+        separateVault.recipientCount();
+        vm.prank(GATEWAY);
+        vm.expectRevert();
+        separateVault.allocate{value: 1}(MESSAGE_1);
     }
 
     function testClaimCannotBeRepeated() public {

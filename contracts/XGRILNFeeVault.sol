@@ -67,14 +67,10 @@ contract XGRILNFeeVault {
         return setId;
     }
 
-    // New RegistryV2 provides address-only view. Older deployed registries
-    // retain ABI compatibility through the original getValidatorSet fallback.
+    /// @dev Fresh XETA deployments require the V2 address-only getter.
+    ///      Missing or invalid RegistryV2 interfaces must fail closed.
     function _feeRecipients() private view returns (address[] memory validators, uint64 setId) {
-        (bool ok, bytes memory result) = address(validatorRegistry).staticcall(
-            abi.encodeWithSignature("getFeeRecipients()")
-        );
-        if (ok && result.length >= 96) return abi.decode(result, (address[], uint64));
-        (validators,,setId) = validatorRegistry.getValidatorSet();
+        return validatorRegistry.getFeeRecipients();
     }
 
     /// @notice Original source Gateway only; no settlement / retry double pay.
