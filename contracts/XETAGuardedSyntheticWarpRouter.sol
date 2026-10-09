@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
+import {TokenRouter} from "@hyperlane-xyz/core/contracts/token/libs/TokenRouter.sol";
 import {HypERC20} from "@hyperlane-xyz/core/contracts/token/HypERC20.sol";
 import {XETARouterCore} from "./XETARouterCore.sol";
 
@@ -40,4 +41,5 @@ contract XETAGuardedSyntheticWarpRouter is HypERC20, XETARouterCore {
             address(0)
         );
     }
+    function _transferRemote(uint32 domain, bytes32 recipient, uint256 amount) internal override(TokenRouter, XETARouterCore) returns (bytes32) { return XETARouterCore._transferRemote(domain, recipient, amount); }
 }
