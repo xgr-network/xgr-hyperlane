@@ -53,8 +53,8 @@ The native relayer is not a trust anchor. It can delay delivery but cannot manuf
 
 Interchain validator membership changes require the configured XGR Interchain quorum. Validator membership is destination-scoped; checkpoint attestations are route-scoped.
 
-The Base → XGR path additionally uses a PausableISM inside a 2-of-2 aggregation as an explicit operational safety gate.
+Destination security uses the route-aware XGRILNInterchainISMV2 with canonical route and BLS quorum verification. Any further ISM composition must be independently verified before deployment.
 
 ## Supported code
 
-Security reports should target the current `main` branch and current deployed contracts. Historical or superseded deployment addresses remain documented for forensic and compatibility purposes but should be identified as historical when reporting.
+Security reports should target the current `main` branch and current deployed contracts. Identify the affected XETA deployment, chain, code version and transaction evidence when reporting.
