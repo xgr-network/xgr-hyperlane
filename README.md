@@ -8,7 +8,7 @@ XGRChain (chain ID/domain 1643) is the central hub. Base, Polygon and Arbitrum a
 - `contracts/XETAGuardedNativeWarpRouter.sol` handles native XGR custody on the hub.
 - `contracts/XETAGuardedSyntheticWarpRouter.sol` handles synthetic wXGR mint/burn on spoke chains.
 - One router instance per asset per chain. Each directed route has its own ILNGateway and automatically created FeeVault. Governance remains with the current validator quorum.
-- `XGRILNInterchainISMV2`, `XGRILNProtocol` and `XGRInterchainValidatorRegistryV2` are **current** V2 cryptographic/wire interfaces; those names are not legacy bridges.
+- `XGRILNInterchainISMV2`, `XGRILNProtocol` and `XGRInterchainValidatorRegistryV2` are **current** V2 cryptographic/wire interfaces; these are the current cryptographic and wire interfaces.
 - `script/DeployXETA.s.sol` and `script/DeployXETARouters.s.sol` provide deployment helpers; neither can approve routes.
 
 ## Token and chain manifests
