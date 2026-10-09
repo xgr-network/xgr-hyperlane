@@ -15,7 +15,7 @@ import {
   snapshotNodes,
 } from "./merkle.mjs";
 import { wrapAggregationMetadata } from "./metadata.mjs";
-import { ILN_OPERATION_EVENT, requireRouteId, encodeCheckpointPayloadV2, encodeISMMetadataV313 } from "./iln-v313.mjs";
+import { ILN_OPERATION_EVENT, requireRouteId, encodeCheckpointPayloadV2, encodeISMMetadataV313 } from "./iln-codec.mjs";
 
 const env = (name, fallback = undefined) => {
   const value = process.env[name] ?? fallback;
@@ -308,7 +308,7 @@ async function loadState() {
   try {
     const state = JSON.parse(fs.readFileSync(STATE_PATH, "utf8"));
     if (state.version !== 2 || state.routeId !== ROUTE_ID || state.originChainId !== String(ORIGIN_CHAIN_ID) || state.destinationDomain !== DESTINATION_DOMAIN || lower(state.originGateway) !== lower(ORIGIN_ILN_GATEWAY)) {
-      throw new Error("ILN relayer state version or route identity mismatch; use a fresh v3.1.3 state path");
+      throw new Error("ILN relayer state version or route identity mismatch; use a fresh v3.1.4 state path");
     }
     return validateState(state);
   } catch (err) {

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Permissionless, one-shot ILN v3.1.3 delivery recovery.
+// Permissionless, one-shot ILN v3.1.4 delivery recovery.
 // Reads only public RPC data and prints unsigned Mailbox.process calldata.
 // No relayer service, persistent relayer state, privileged wallet or server secrets.
 import {
@@ -22,7 +22,7 @@ import {
   encodeCheckpointPayloadV2,
   encodeISMMetadataV313,
   requireRouteId,
-} from "./iln-v313.mjs";
+} from "./iln-codec.mjs";
 
 const required = (name) => {
   const value = process.env[name]?.trim();
@@ -48,7 +48,7 @@ const assert = (condition, message) => {
 const isHash = (v) => /^0x[0-9a-fA-F]{64}$/.test(String(v));
 const id = process.argv[2]?.toLowerCase();
 if (!isHash(id)) {
-  console.error("Usage: node recover-iln.mjs <0x-message-id>  (see docs/INTERCHAIN_V313_PERMISSIONLESS_RECOVERY.md)");
+  console.error("Usage: node recover-iln.mjs <0x-message-id>  (see docs/XETA_SPEC_V314.md)");
   process.exit(1);
 }
 

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { AbiCoder, Interface, getBytes, keccak256 } from "ethers";
-import { ILN_OPERATION_EVENT, CHECKPOINT_DOMAIN_V2, ISM_V313_METADATA_TYPES, requireRouteId, encodeCheckpointPayloadV2, encodeISMMetadataV313 } from "./iln-v313.mjs";
+import { ILN_OPERATION_EVENT, CHECKPOINT_DOMAIN_V2, ISM_V314_METADATA_TYPES, requireRouteId, encodeCheckpointPayloadV2, encodeISMMetadataV314 } from "./iln-v313.mjs";
 
 const routeId = "0x" + "aa".repeat(32);
 const msgId = "0x" + "bb".repeat(32);
@@ -52,15 +52,15 @@ test("Gateway V2 event is indexed by routeId and messageId", () => {
   assert.equal(decoded.args.messageId.toLowerCase(),msgId);
 });
 
-test("ISM V313 metadata has exactly 20 fields and preserves route binding", () => {
+test("ISM V314 metadata has exactly 20 fields and preserves route binding", () => {
   const proof=Array.from({length:32},()=>root);
-  const raw=encodeISMMetadataV313({...checkpoint,messageIndex:0,merkleProof:proof,checkpointIndex:17,signerBitmap:"0x03",aggregateSignature:"0x" + "11".repeat(96)});
-  const decoded=AbiCoder.defaultAbiCoder().decode(ISM_V313_METADATA_TYPES,raw);
+  const raw=encodeISMMetadataV314({...checkpoint,messageIndex:0,merkleProof:proof,checkpointIndex:17,signerBitmap:"0x03",aggregateSignature:"0x" + "11".repeat(96)});
+  const decoded=AbiCoder.defaultAbiCoder().decode(ISM_V314_METADATA_TYPES,raw);
   assert.equal(decoded.length,20);
   assert.equal(decoded[2],8453n);
   assert.equal(decoded[5].toLowerCase(),routeId);
   assert.equal(decoded[15].toLowerCase(),msgId);
   assert.equal(decoded[18],"0x03");
   assert.equal(getBytes(decoded[19]).length,96);
-  assert.throws(()=>encodeISMMetadataV313({...checkpoint,merkleProof:[],messageIndex:0}),/exactly 32/);
+  assert.throws(()=>encodeISMMetadataV314({...checkpoint,merkleProof:[],messageIndex:0}),/exactly 32/);
 });

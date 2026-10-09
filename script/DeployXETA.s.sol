@@ -9,10 +9,10 @@ import {XGRILNRegistry} from "../contracts/XGRILNRegistry.sol";
 import {XGRInterchainBLSVerifier} from "../contracts/XGRInterchainBLSVerifier.sol";
 import {XGRInterchainValidatorRegistryV2} from "../contracts/XGRInterchainValidatorRegistryV2.sol";
 
-/// @notice Generic XGR Interchain v3.1.3 deployment scripts.
+/// @notice Generic XGR Interchain v3.1.4 deployment scripts.
 /// @dev Security-sensitive route activation is intentionally NOT performed here.
 ///      After deploying the route-specific Gateway, add the route through the
-///      v3.1.3 ILN governance quorum flow so the canonical registry remains the
+///      v3.1.4 ILN governance quorum flow so the canonical registry remains the
 ///      sole source of mutable route truth.
 ///
 /// Common environment:
@@ -44,7 +44,7 @@ import {XGRInterchainValidatorRegistryV2} from "../contracts/XGRInterchainValida
 ///   DESTINATION_DOMAIN
 ///   WARP_ROUTER
 ///   NATIVE_QUOTE_INCLUDES_PRINCIPAL
-abstract contract DeployV313Base is Script {
+abstract contract DeployXETABase is Script {
     error WrongChain(uint256 expected, uint256 actual);
     error InvalidEnv();
 
@@ -117,7 +117,7 @@ abstract contract DeployV313Base is Script {
 /// @dev Do NOT deploy this on XGRChain when using the native compressed verifier.
 ///      For XGRChain, configure BLS_VERIFIER to the native verifier address
 ///      (currently 0x0000000000000000000000000000000000002040) and format 1.
-contract DeployV313EIP2537Verifier is DeployV313Base {
+contract DeployXETAEIP2537Verifier is DeployXETABase {
     function run()
         external
         returns (XGRInterchainBLSVerifier verifier)
@@ -133,7 +133,7 @@ contract DeployV313EIP2537Verifier is DeployV313Base {
 /// @notice Deploy the canonical destination-scoped ValidatorRegistryV2.
 /// @dev The same local RegistryV2 is also the governance authority for the
 ///      ILN Registry when this physical chain acts as a source chain.
-contract DeployV313RegistryV2 is DeployV313Base {
+contract DeployXETARegistryV2 is DeployXETABase {
     function run()
         external
         returns (XGRInterchainValidatorRegistryV2 registry)
@@ -201,7 +201,7 @@ contract DeployV313RegistryV2 is DeployV313Base {
 /// @notice Deploy the source-chain canonical ILN Registry.
 /// @dev LOCAL_REGISTRY_V2 must be the RegistryV2 deployed on this same physical
 ///      chain. Route state is added later through quorum-approved governance.
-contract DeployV313ILNRegistry is DeployV313Base {
+contract DeployXETAILNRegistry is DeployXETABase {
     function run() external returns (XGRILNRegistry registry) {
         uint64 localChainId = _asUint64(_localChainId());
         uint32 localDomain = _localDomain();
@@ -221,11 +221,11 @@ contract DeployV313ILNRegistry is DeployV313Base {
 }
 
 /// @notice Deploy the generic destination ISM.
-/// @dev This is the v3.1.3 route-aware ISM for both ordinary EVM destinations
+/// @dev This is the v3.1.4 route-aware ISM for both ordinary EVM destinations
 ///      and XGRChain. The RegistryV2 selects the actual verifier implementation,
 ///      so XGRChain can use its native verifier while Base-like chains use
 ///      XGRInterchainBLSVerifier/EIP-2537.
-contract DeployV313ISM is DeployV313Base {
+contract DeployXETAISM is DeployXETABase {
     function run()
         external
         returns (XGRILNInterchainISMV2 ism)
@@ -246,8 +246,8 @@ contract DeployV313ISM is DeployV313Base {
 
 /// @notice Deploy one route-specific source Gateway.
 /// @dev The deployed Gateway is inert until a matching route record is added to
-///      ILN_REGISTRY through the v3.1.3 governance quorum flow.
-contract DeployV313Gateway is DeployV313Base {
+///      ILN_REGISTRY through the v3.1.4 governance quorum flow.
+contract DeployXETAGateway is DeployXETABase {
     function run() external returns (ILNGateway gateway) {
         _localChainId();
         _localDomain();
