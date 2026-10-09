@@ -13,7 +13,7 @@ export function loadCatalog(root=ROOT){
  for(const file of files(root,"config/chains")){const n=file.slice(0,-5);chains[n]=json(root,"config/chains/"+file)}
  for(const chain of Object.keys(chains))infrastructure[chain]=json(root,"deployments/mainnet/infrastructure/"+chain+".json");
  for(const dir of readdirSync(join(root,"config/assets"),{withFileTypes:true}).filter(x=>x.isDirectory())){
-  const n=dir.name;assets[n]={metadata:json(root,`config/assets/${n}/asset.json`),routes:json(root,`config/assets/${n}/routes.json`),mainnet:json(root,`config/assets/${n}/mainnet.json`),deployment:json(root,`deployments/mainnet/assets/${n}.json`)};
+  const n=dir.name;assets[n]={metadata:json(root,`config/assets/${n}/asset.json`),profile:json(root,`config/assets/${n}/metadata.json`),routes:json(root,`config/assets/${n}/routes.json`),mainnet:json(root,`config/assets/${n}/mainnet.json`),deployment:json(root,`deployments/mainnet/assets/${n}.json`)};
  }
  return {chains,assets,infrastructure};
 }
@@ -44,8 +44,36 @@ export function validateCatalog({chains,assets,infrastructure}){
  }
  check(Object.keys(assets).length>=1,"no assets defined");
  for(const [name,a] of Object.entries(assets)){
-  const p="config/assets/"+name,{metadata:m,routes:r,mainnet:mn,deployment:d}=a;
+  const p="config/assets/"+name,{metadata:m,profile:pub,routes:r,mainnet:mn,deployment:d}=a;
   check(m.kind==="asset-config"&&m.schemaVersion===1&&m.asset===name&&Number.isInteger(m.decimals)&&m.decimals>=0&&m.decimals<=36,p+": invalid asset metadata");
+  
+  const publicName=x=>typeof x==="string"&&x.length>=1&&x.length<=120&&x.trim()===x;
+  const url=x=>x===null||(typeof x==="string"&&x.length<=512&&/^https:\/\/[^/@\s?#]+(?:[/?#][^\s]*)?$/i.test(x));
+  const refId=x=>x===null||(typeof x==="string"&&/^[a-z0-9][a-z0-9_-]{0,99}$/i.test(x));
+  check(pub?.kind==="xeta-token-profile"&&pub.schemaVersion===1&&pub.asset===name&&
+    /^[a-z0-9-]{1,80}$/.test(pub.slug||"")&&publicName(pub.name)&&
+    typeof pub.shortDescription==="string"&&pub.shortDescription.length>=15&&pub.shortDescription.length<=280&&
+    typeof pub.description==="string"&&pub.description.length>=40&&pub.description.length<=5000,
+    p+": invalid public token profile");
+  check(Array.isArray(pub?.categories)&&pub.categories.length>=1&&pub.categories.length<=8&&
+    pub.categories.every(publicName)&&new Set(pub.categories).size===pub.categories.length,
+    p+": invalid profile categories");
+  check(Array.isArray(pub?.tags)&&pub.tags.length<=16&&pub.tags.every(publicName),
+    p+": invalid profile tags");
+  check(pub?.branding&&typeof pub.branding.logoUrl==="string"&&url(pub.branding.logoUrl)&&url(pub.branding.bannerUrl),
+    p+": invalid profile branding");
+  check(pub?.links&&typeof pub.links.website==="string"&&url(pub.links.website)&&
+    ["explorer","github","docs","whitepaper","x","linkedin","telegram","discord"].every(k=>url(pub.links[k])),
+    p+": invalid profile links");
+  check(pub?.market&&["none","explorer-xgr-price"].includes(pub.market.priceSource)&&
+    (pub.market.priceSource!=="explorer-xgr-price"||name==="XGR")&&refId(pub.market.coingeckoId)&&refId(pub.market.coinmarketcapId),
+    p+": invalid profile market config");
+  check(pub?.supply&&["circulating","total","max"].every(k=>
+    pub.supply[k]===null||(typeof pub.supply[k]==="string"&&/^\d+$/.test(pub.supply[k]))),
+    p+": invalid profile supply figures");
+  check(["project-maintained","independently-reviewed"].includes(pub?.verification?.status),
+    p+": invalid profile verification");
+
   check(chains[m.canonical?.chain]!==undefined,p+": unknown canonical chain");
   check(Array.isArray(m.representations)&&m.representations.length>=2,p+": missing representations");
   const reps=new Map();

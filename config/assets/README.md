@@ -1,9 +1,12 @@
 # Per-token asset manifests
 
-Each real configured token has one directory: <TOKEN>/asset.json, routes.json
-and mainnet.json. These contain the canonical asset identity and decimals,
+Each real configured token has one directory: <TOKEN>/asset.json, routes.json,
+mainnet.json and metadata.json. These contain the canonical asset identity and decimals,
 representation types, desired one-hop routes and references to the mainnet
-inventory. They do NOT contain deployed contract addresses or fee custody.
+inventory. metadata.json provides public project description, categories, official logo,
+social links and optional market-provider IDs. None of these fields controls
+validator governance or deployment. They do NOT contain deployed contract
+addresses or fee custody.
 
 Separate observation records live in deployments/mainnet/assets/<TOKEN>.json.
 Per-chain shared infrastructure is in deployments/mainnet/infrastructure/.

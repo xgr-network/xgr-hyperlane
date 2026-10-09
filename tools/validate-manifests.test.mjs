@@ -12,3 +12,7 @@ test("rejects premature route ID without fee",()=>{const x=copy();x.assets.XGR.r
 test("rejects fabricated planned chain security",()=>{const x=copy();x.infrastructure.polygon.ilnV314.sourceRegistry="0x"+"2".repeat(40);assert.ok(validateCatalog(x).some(s=>s.includes("pending infrastructure")))});
 test("rejects duplicate domains",()=>{const x=copy();x.chains.base.domainId=1643;assert.ok(validateCatalog(x).some(s=>s.includes("duplicate chainId or domainId")))});
 test("no hardcoded legacy router address",()=>{const x=copy();assert.equal(x.assets.XGR.deployment.ilnV314.routes.filter(r=>r.warpRouter!==null).length,0)});
+
+test("rejects missing token profile logo",()=>{const c=copy();c.assets.XGR.profile.branding.logoUrl=null;assert.ok(validateCatalog(c).some(e=>e.includes("profile branding")))});
+test("rejects unsafe public profile URL",()=>{const c=copy();c.assets.XGR.profile.links.website="javascript:alert(1)";assert.ok(validateCatalog(c).some(e=>e.includes("profile links")))});
+test("rejects mismatched token profile",()=>{const c=copy();c.assets.XGR.profile.asset="OTHER";assert.ok(validateCatalog(c).some(e=>e.includes("public token profile")))});
