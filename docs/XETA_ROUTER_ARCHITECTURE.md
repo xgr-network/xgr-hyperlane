@@ -38,8 +38,7 @@ to the guarded internal _transferRemote path. Both adapters MUST delegate
 to XETARouterCore._transferRemote. Inbound handle is unchanged upstream code.
 
 No xgr-node change. No company-owned control key. Never activate a route
-before fork and genuine chain E2E proof. Legacy on-chain deployments are
-not used as new token collateral.
+before fork and genuine chain E2E proof. XETA token representations must use newly verified contracts and independent supply accounting.
 
 Future sponsored XGR hub-hop remains a separate application addition and
 is NOT part of this change.
