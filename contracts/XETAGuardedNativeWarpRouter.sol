@@ -41,6 +41,5 @@ contract XETAGuardedNativeWarpRouter is XETARouterCore {
         NativeCollateral._transferTo(recipient, amount);
     }
 
-    function _transferRemote(uint32 domain, bytes32 recipient, uint256 amount) internal override(TokenRouter, XETARouterCore) returns (bytes32) { return XETARouterCore._transferRemote(domain, recipient, amount); }
     receive() external payable {}
 }

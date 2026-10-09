@@ -41,5 +41,5 @@ contract XETAGuardedSyntheticWarpRouter is HypERC20, XETARouterCore {
             address(0)
         );
     }
-    function _transferRemote(uint32 domain, bytes32 recipient, uint256 amount) internal override(TokenRouter, XETARouterCore) returns (bytes32) { return XETARouterCore._transferRemote(domain, recipient, amount); }
+    function _transferRemote(uint32 domain, bytes32 recipient, uint256 amount) internal override(HypERC20, XETARouterCore) returns (bytes32) { return XETARouterCore._transferRemote(domain, recipient, amount); }
 }
