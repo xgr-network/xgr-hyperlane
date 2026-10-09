@@ -103,6 +103,23 @@ contract XGRILNRegistryTest is Test {
         assertTrue(enabled);
     }
 
+    function testRejectsDirectSpokeToSpokeRouteWithValidQuorum() public {
+        XGRILNProtocol.GovernanceProposal memory proposal = _routeAdd(1);
+        proposal.route.key.destinationDomain = 137; // Base -> Polygon is forbidden
+        vm.expectRevert(XGRILNRegistry.InvalidProposal.selector);
+        registry.applyGovernance(proposal, hex"03", hex"01");
+        assertFalse(registry.exists(137, ROUTE_ID));
+        assertEq(registry.governanceNonce(137, ROUTE_ID), 0);
+    }
+
+    function testRejectsSameDomainRouteWithValidQuorum() public {
+        XGRILNProtocol.GovernanceProposal memory proposal = _routeAdd(1);
+        proposal.route.key.destinationDomain = SOURCE_DOMAIN;
+        vm.expectRevert(XGRILNRegistry.InvalidProposal.selector);
+        registry.applyGovernance(proposal, hex"03", hex"01");
+        assertFalse(registry.exists(SOURCE_DOMAIN, ROUTE_ID));
+    }
+
     function testRejectsStaleRouteNonce() public {
         registry.applyGovernance(_routeAdd(1), hex"03", hex"01");
 

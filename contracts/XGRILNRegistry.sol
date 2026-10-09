@@ -10,6 +10,7 @@ import {XGRILNProtocol} from "./XGRILNProtocol.sol";
 ///      Interchain validator registry of THIS chain. Any account may submit an
 ///      already-completed governance quorum; the caller has no authority.
 contract XGRILNRegistry is IXGRILNRegistry {
+    uint32 private constant XGR_HUB_DOMAIN = 1643;
     uint8 private constant PROPOSAL_FEE_UPDATE = 1;
     uint8 private constant PROPOSAL_ROUTE_ADD = 2;
     uint8 private constant PROPOSAL_ROUTE_ENABLE = 3;
@@ -202,6 +203,13 @@ contract XGRILNRegistry is IXGRILNRegistry {
     ) private {
         uint32 destinationDomain = route.key.destinationDomain;
         bytes32 routeId = route.key.routeId;
+        // The hub invariant is enforced both in the asset router and here.
+        // A valid validator signature cannot register a direct spoke-to-spoke
+        // or same-domain route in the canonical source registry.
+        if (
+            destinationDomain == sourceDomain ||
+            (sourceDomain != XGR_HUB_DOMAIN && destinationDomain != XGR_HUB_DOMAIN)
+        ) revert InvalidProposal();
         if (routeExists[destinationDomain][routeId]) {
             revert RouteAlreadyExists();
         }
