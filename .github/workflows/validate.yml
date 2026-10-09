@@ -21,8 +21,10 @@ jobs:
           set -euo pipefail
           test ! -e runtime/.env.relayer
           test ! -e runtime/.env.relayer.reverse
-          test ! -e runtime/.env.relayer.iln.base-to-xgr
-          test ! -e runtime/.env.relayer.iln.xgr-to-base
+          if git ls-files -- "runtime/.env.relayer.iln.*" | grep -vE "\.example$"; then
+            echo "Real XETA ILN runtime env file committed" >&2
+            exit 1
+          fi
           if git grep -nE '(^|=)(0x)?[0-9a-fA-F]{64}$' -- runtime ':!runtime/*.example'; then
             echo "Potential raw private key found in tracked runtime files" >&2
             exit 1
@@ -47,6 +49,12 @@ jobs:
         run: |
           set -euo pipefail
           bash -n runtime/manage-relayers.sh
+          bash runtime/manage-relayers.sh status all
+          if bash runtime/manage-relayers.sh status iln-invalid; then
+            echo "Invalid ILN route target was accepted" >&2
+            exit 1
+          fi
+          node tools/check-xeta-clean.mjs
           find runtime/native-relayer -maxdepth 1 -name '*.mjs' -print0 | xargs -0 -n1 node --check
 
       - name: Native relayer tests

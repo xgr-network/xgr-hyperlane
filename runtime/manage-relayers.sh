@@ -5,35 +5,42 @@ STATE_DIR="$RUNTIME_DIR/runtime-state"
 
 mkdir -p "$STATE_DIR"
 
+route_suffix() {
+  local route="$1"
+  [[ "$route" =~ ^iln-[a-z0-9-]+-to-[a-z0-9-]+$ ]] || return 1
+  printf "%s\n" "${route#iln-}"
+}
+
 env_file() {
-  case "$1" in
-    iln-base-to-xgr) printf '%s\n' "$RUNTIME_DIR/.env.relayer.iln.base-to-xgr" ;;
-    iln-xgr-to-base) printf '%s\n' "$RUNTIME_DIR/.env.relayer.iln.xgr-to-base" ;;
-    *) return 1 ;;
-  esac
+  local suffix
+  suffix="$(route_suffix "$1")" || return 1
+  printf "%s/.env.relayer.iln.%s\n" "$RUNTIME_DIR" "$suffix"
 }
 
 script_file() {
-  case "$1" in
-    iln-base-to-xgr|iln-xgr-to-base) printf '%s\n' "$RUNTIME_DIR/native-relayer/iln.mjs" ;;
-    *) return 1 ;;
-  esac
+  route_suffix "$1" >/dev/null || return 1
+  printf "%s/native-relayer/iln.mjs\n" "$RUNTIME_DIR"
 }
 
 pid_file() {
-  case "$1" in
-    iln-base-to-xgr) printf '%s\n' "$STATE_DIR/native-iln-base-to-xgr.pid" ;;
-    iln-xgr-to-base) printf '%s\n' "$STATE_DIR/native-iln-xgr-to-base.pid" ;;
-    *) return 1 ;;
-  esac
+  route_suffix "$1" >/dev/null || return 1
+  printf "%s/native-%s.pid\n" "$STATE_DIR" "$1"
 }
 
 log_file() {
-  case "$1" in
-    iln-base-to-xgr) printf '%s\n' "$STATE_DIR/native-iln-base-to-xgr.log" ;;
-    iln-xgr-to-base) printf '%s\n' "$STATE_DIR/native-iln-xgr-to-base.log" ;;
-    *) return 1 ;;
-  esac
+  route_suffix "$1" >/dev/null || return 1
+  printf "%s/native-%s.log\n" "$STATE_DIR" "$1"
+}
+
+configured_routes() {
+  local file suffix
+  for file in "$RUNTIME_DIR"/.env.relayer.iln.*; do
+    [[ -f "$file" && "$file" != *.example ]] || continue
+    suffix="${file##*/}"
+    suffix="${suffix#.env.relayer.iln.}"
+    route_suffix "iln-$suffix" >/dev/null || continue
+    printf "iln-%s\n" "$suffix"
+  done
 }
 
 is_running() {
@@ -150,21 +157,24 @@ logs_one() {
 }
 
 for_each_target() {
-  local action="$1"
-  local target="$2"
-
-  case "$target" in
-    iln-base-to-xgr|iln-xgr-to-base)
-      "${action}_one" "$target"
-      ;;
-    all)
-      "${action}_one" iln-base-to-xgr || return 1\n      "${action}_one" iln-xgr-to-base
-      ;;
-    *)
-      echo "target must be iln-base-to-xgr, iln-xgr-to-base or all" >&2
-      return 1
-      ;;
-  esac
+  local action="$1" target="$2" route count=0
+  if [[ "$target" == "all" ]]; then
+    while IFS= read -r route; do
+      count=$((count + 1))
+      "${action}_one" "$route" || return 1
+    done < <(configured_routes)
+    if ((count == 0)); then
+      echo "no configured XETA ILN relayer env files found in $RUNTIME_DIR"
+      [[ "$action" != "start" ]]
+      return $?
+    fi
+    return 0
+  fi
+  route_suffix "$target" >/dev/null || {
+    echo "target must be iln-<source>-to-<destination> or all" >&2
+    return 1
+  }
+  "${action}_one" "$target"
 }
 
 ACTION="${1:-status}"
@@ -186,13 +196,13 @@ case "$ACTION" in
     ;;
   logs)
     if [ "$TARGET" = "all" ]; then
-      echo "logs requires forward, reverse, iln-base-to-xgr or iln-xgr-to-base" >&2
+      echo "logs requires one specific iln-<source>-to-<destination> route" >&2
       exit 1
     fi
     logs_one "$TARGET"
     ;;
   *)
-    echo "usage: $0 {start|stop|restart|status|logs} [iln-base-to-xgr|iln-xgr-to-base|all]" >&2
+    echo "usage: $0 {start|stop|restart|status|logs} [iln-<source>-to-<destination>|all]" >&2
     exit 1
     ;;
 esac

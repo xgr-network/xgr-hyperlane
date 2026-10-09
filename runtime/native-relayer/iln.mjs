@@ -65,8 +65,7 @@ const DESTINATION_CHAIN_ID = BigInt(env("DESTINATION_CHAIN_ID"));
 const DESTINATION_DOMAIN = Number(env("DESTINATION_DOMAIN"));
 const DESTINATION_MAILBOX = getAddress(env("DESTINATION_MAILBOX"));
 const DESTINATION_WARP_ROUTER = getAddress(env("DESTINATION_WARP_ROUTER"));
-const DESTINATION_ILN_ISM = process.env.DESTINATION_ILN_ISM
-  ? getAddress(process.env.DESTINATION_ILN_ISM) : null;
+const DESTINATION_ILN_ISM = getAddress(env("DESTINATION_ILN_ISM"));
 const RELAYER_PRIVATE_KEY = env("RELAYER_PRIVATE_KEY");
 
 const CONFIGURED_START_BLOCK = optionalNumber("ORIGIN_START_BLOCK", 0);
@@ -199,12 +198,13 @@ const destinationMailbox = new Contract(
   wallet,
 );
 
-const destinationISM = DESTINATION_ILN_ISM
-  ? new Contract(DESTINATION_ILN_ISM, ["function registry() view returns(address)"], destinationProvider)
-  : null;
+const destinationISM = new Contract(
+  DESTINATION_ILN_ISM,
+  ["function registry() view returns(address)"],
+  destinationProvider,
+);
 let destinationValidatorRegistry;
 async function currentDestinationSetID() {
-  if (!destinationISM) return null; // legacy observation mode; destination staticCall remains mandatory
   if (!destinationValidatorRegistry) {
     const addr = await destinationISM.registry();
     destinationValidatorRegistry = new Contract(addr, ["function setId() view returns(uint64)"], destinationProvider);
@@ -501,9 +501,10 @@ async function getAttestation(id, operation) {
   let attestation;
   try {
     const setID = await currentDestinationSetID();
-    attestation = setID === null
-      ? await attestationProvider.send("xgr_getILNInterchainAttestation", [ATTESTATION_ROUTE, id])
-      : await attestationProvider.send("xgr_getILNQuorumAttestation", [ATTESTATION_ROUTE, id, Number(setID)]);
+    attestation = await attestationProvider.send(
+      "xgr_getILNQuorumAttestation",
+      [ATTESTATION_ROUTE, id, Number(setID)],
+    );
   } catch (err) {
     if (/attestation not found|quorum not found|not found/i.test(String(err))) {
       return null;
