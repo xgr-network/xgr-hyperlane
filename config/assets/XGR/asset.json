@@ -22,8 +22,20 @@
       "representation": "synthetic",
       "symbol": "wXGR",
       "assetAddress": null
+    },
+    {
+      "chain": "polygon",
+      "representation": "synthetic",
+      "symbol": "wXGR",
+      "assetAddress": null
+    },
+    {
+      "chain": "arbitrum",
+      "representation": "synthetic",
+      "symbol": "wXGR",
+      "assetAddress": null
     }
   ],
   "bridgeModel": "lock-mint-burn-unlock",
-  "notes": "Token identity/topology only. Existing router contract addresses belong to deployments/mainnet/assets/XGR.json, not desired config."
+  "notes": "XETA v3.1.4 canonical asset: native XGR on XGRChain. All wXGR contracts and routers are NEW and unverified; no reuse of legacy locked collateral."
 }

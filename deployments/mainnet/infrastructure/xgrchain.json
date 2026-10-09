@@ -5,19 +5,11 @@
   "chain": "xgrchain",
   "chainId": 1643,
   "domainId": 1643,
-  "inventorySource": "deployments/xgrchain-mainnet.json",
-  "observedAt": "2026-10-04",
   "hyperlaneCore": {
     "mailbox": "0x5632409bc2f0e8bAc4AaF43654D4FFc7822C9c79",
     "merkleTreeHook": "0xeD98Af715b5a72dCD412567eb086d48225CDDACF",
     "domainRoutingIsm": "0xAf03B407FED3c4857A24Be9ac8EC64b7d178AA51",
     "validatorAnnounce": "0x1814Be3E608883cA510707d3dc6f31792FD5CAaF"
-  },
-  "legacySecurity": {
-    "destinationRegistryV2": "0x013F2F2f7dB897F941b19C4ab71C5395a48A0292",
-    "destinationIsmV2": "0x3b83687d77170D42feDDFe221629cc21e771E021",
-    "baseOriginAggregationIsmV2": "0x35c2B8403a65D3bd2b86294BF1f26E13A246c05e",
-    "nativeBlsPrecompile": "0x0000000000000000000000000000000000002040"
   },
   "ilnV314": {
     "status": "unverified-not-activated",
@@ -25,5 +17,6 @@
     "destinationRegistryV2": null,
     "destinationIsmV2": null,
     "blsVerifier": null
-  }
+  },
+  "infrastructureNote": "Existing Hyperlane Mailbox/Hook addresses are observed chain infrastructure; V1 security, router and token deployments are NOT part of the new XETA stack."
 }

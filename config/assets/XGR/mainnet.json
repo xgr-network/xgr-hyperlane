@@ -6,6 +6,5 @@
   "routeManifest": "config/assets/XGR/routes.json",
   "deploymentManifest": "deployments/mainnet/assets/XGR.json",
   "ilnV314Activation": "not-authorized",
-  "legacyRoute": "XGRChain native XGR <-> Base wXGR",
-  "notes": "Legacy Mainnet bridge is a separate deployed generation. This config alone cannot add/enable an ILN route."
+  "notes": "All six XETA routes are planned and require fresh router, ISM, Gateway, vault, governance and full source/destination E2E verification."
 }
