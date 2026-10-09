@@ -88,6 +88,7 @@ contract ILNGatewayNativeTest is Test {
 
         assertTrue(messageId != bytes32(0));
         assertEq(router.lockedWei(), amount);
-        assertEq(address(gateway).balance, validatorFee);
+        assertEq(address(gateway).balance, 0);
+        assertEq(address(gateway.feeVault()).balance, validatorFee);
     }
 }

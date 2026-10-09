@@ -15,7 +15,7 @@ import {
   snapshotNodes,
 } from "./merkle.mjs";
 import { wrapAggregationMetadata } from "./metadata.mjs";
-import { ILN_OPERATION_EVENT, requireRouteId, encodeCheckpointPayloadV2, encodeISMMetadataV313 } from "./iln-v313.mjs";
+import { ILN_OPERATION_EVENT, requireRouteId, encodeCheckpointPayloadV2, encodeISMMetadataV314 } from "./iln-codec.mjs";
 
 const env = (name, fallback = undefined) => {
   const value = process.env[name] ?? fallback;
@@ -65,6 +65,7 @@ const DESTINATION_CHAIN_ID = BigInt(env("DESTINATION_CHAIN_ID"));
 const DESTINATION_DOMAIN = Number(env("DESTINATION_DOMAIN"));
 const DESTINATION_MAILBOX = getAddress(env("DESTINATION_MAILBOX"));
 const DESTINATION_WARP_ROUTER = getAddress(env("DESTINATION_WARP_ROUTER"));
+const DESTINATION_ILN_ISM = getAddress(env("DESTINATION_ILN_ISM"));
 const RELAYER_PRIVATE_KEY = env("RELAYER_PRIVATE_KEY");
 
 const CONFIGURED_START_BLOCK = optionalNumber("ORIGIN_START_BLOCK", 0);
@@ -197,9 +198,42 @@ const destinationMailbox = new Contract(
   wallet,
 );
 
+const destinationISM = new Contract(
+  DESTINATION_ILN_ISM,
+  ["function registry() view returns(address)"],
+  destinationProvider,
+);
+let destinationValidatorRegistry;
+async function currentDestinationSetID() {
+  if (!destinationValidatorRegistry) {
+    const addr = await destinationISM.registry();
+    destinationValidatorRegistry = new Contract(addr, ["function setId() view returns(uint64)"], destinationProvider);
+  }
+  return BigInt(await destinationValidatorRegistry.setId());
+}
+
 const lower = (value) => String(value).toLowerCase();
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const observedReady = new Set();
+const requestedQuorumAt = new Map();
+// The relayer is an optional client of the same public first-time/recovery
+// quorum RPC used by independent users. Bounded retries are advisory only.
+async function hintCurrentQuorum(id, operation) {
+  const last = requestedQuorumAt.get(id) ?? 0;
+  if (Date.now() - last < 30000) return;
+  requestedQuorumAt.set(id, Date.now());
+  try {
+    await attestationProvider.send("xgr_requestILNQuorum", [
+      ATTESTATION_ROUTE, id, Number(operation.sourceBlockNumber),
+    ]);
+  } catch (error) {
+    console.warn(JSON.stringify({
+      event: "iln_quorum_request_unavailable",
+      messageId: id,
+      reason: String(error),
+    }));
+  }
+}
 
 function validateState(state) {
   if (!Number.isSafeInteger(state.nextBlock) || state.nextBlock < 1) {
@@ -274,7 +308,7 @@ async function loadState() {
   try {
     const state = JSON.parse(fs.readFileSync(STATE_PATH, "utf8"));
     if (state.version !== 2 || state.routeId !== ROUTE_ID || state.originChainId !== String(ORIGIN_CHAIN_ID) || state.destinationDomain !== DESTINATION_DOMAIN || lower(state.originGateway) !== lower(ORIGIN_ILN_GATEWAY)) {
-      throw new Error("ILN relayer state version or route identity mismatch; use a fresh v3.1.3 state path");
+      throw new Error("ILN relayer state version or route identity mismatch; use a fresh v3.1.4 state path");
     }
     return validateState(state);
   } catch (err) {
@@ -466,12 +500,13 @@ function expectedPayload(id, attestation, operation) {
 async function getAttestation(id, operation) {
   let attestation;
   try {
+    const setID = await currentDestinationSetID();
     attestation = await attestationProvider.send(
-      "xgr_getILNInterchainAttestation",
-      [ATTESTATION_ROUTE, id],
+      "xgr_getILNQuorumAttestation",
+      [ATTESTATION_ROUTE, id, Number(setID)],
     );
   } catch (err) {
-    if (String(err).toLowerCase().includes("attestation not found")) {
+    if (/attestation not found|quorum not found|not found/i.test(String(err))) {
       return null;
     }
     throw err;
@@ -577,7 +612,7 @@ function buildMetadata(state, id, operation, attestation) {
     );
   }
 
-  const innerMetadata = encodeISMMetadataV313({
+  const innerMetadata = encodeISMMetadataV314({
     messageIndex,
     merkleProof: proof,
     sourceChainId: ORIGIN_CHAIN_ID,
@@ -620,6 +655,7 @@ async function relayAvailable(state) {
       continue;
     }
 
+    await hintCurrentQuorum(id, operation);
     const attestation = await getAttestation(id, operation);
     if (!attestation) continue;
 

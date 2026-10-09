@@ -19,5 +19,7 @@ jobs:
           version: stable
       - name: Install forge-std
         run: forge install foundry-rs/forge-std --no-commit
+      - name: Install pinned Hyperlane and OpenZeppelin Solidity source
+        run: npm install --prefix vendor --ignore-scripts --no-audit --no-fund
       - name: Contract tests
         run: forge test -vvv

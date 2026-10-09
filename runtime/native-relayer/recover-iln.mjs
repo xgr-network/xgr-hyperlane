@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Permissionless, one-shot ILN v3.1.3 delivery recovery.
+// Permissionless, one-shot ILN v3.1.4 delivery recovery.
 // Reads only public RPC data and prints unsigned Mailbox.process calldata.
 // No relayer service, persistent relayer state, privileged wallet or server secrets.
 import {
@@ -20,9 +20,9 @@ import { wrapAggregationMetadata } from "./metadata.mjs";
 import {
   ILN_OPERATION_EVENT,
   encodeCheckpointPayloadV2,
-  encodeISMMetadataV313,
+  encodeISMMetadataV314,
   requireRouteId,
-} from "./iln-v313.mjs";
+} from "./iln-codec.mjs";
 
 const required = (name) => {
   const value = process.env[name]?.trim();
@@ -48,7 +48,7 @@ const assert = (condition, message) => {
 const isHash = (v) => /^0x[0-9a-fA-F]{64}$/.test(String(v));
 const id = process.argv[2]?.toLowerCase();
 if (!isHash(id)) {
-  console.error("Usage: node recover-iln.mjs <0x-message-id>  (see docs/INTERCHAIN_V313_PERMISSIONLESS_RECOVERY.md)");
+  console.error("Usage: node recover-iln.mjs <0x-message-id>  (see docs/XETA_SPEC_V314.md)");
   process.exit(1);
 }
 
@@ -107,7 +107,7 @@ const destSetAbi = [
 
 const sourceMailbox = new Contract(originMailboxAddress, mailboxAbi, origin);
 const sourceHook = new Contract(originHookAddress, hookAbi, origin);
-const sourceGateway = new Contract(originGatewayAddress, [ILN_OPERATION_EVENT], origin);
+const sourceGateway = new Contract(originGatewayAddress, [ILN_OPERATION_EVENT, "function activationBlock() view returns (uint256)"], origin);
 const sourceRegistry = new Contract(originRegistryAddress, registryAbi, origin);
 const destMailbox = new Contract(destinationMailboxAddress, mailboxAbi, destination);
 const destISM = new Contract(destinationISMAddress, destISMAbi, destination);
@@ -182,11 +182,48 @@ async function main() {
   ]);
   assert(Number(ismDomain) === destinationDomain, "ISM destination domain mismatch");
   const destinationSet = new Contract(destinationISMRegistry, destSetAbi, destination);
-  const [currentSetId, signatureFormat, attestation] = await Promise.all([
+  const [currentSetId, signatureFormat] = await Promise.all([
     destinationSet.setId(),
     destinationSet.verifierKeyFormat(),
-    attestations.send("xgr_getILNInterchainAttestation", [routeName, id]),
   ]);
+  let attestation;
+  try {
+    attestation = await attestations.send("xgr_getILNQuorumAttestation", [routeName, id, Number(currentSetId)]);
+  } catch {
+    // First-time delivery and post-rotation recovery use exactly the same
+    // public request path. No relayer or operator-specific signing endpoint.
+    let operationBlock = 0;
+    if (!Number.isSafeInteger(operationBlock) || operationBlock <= 0) {
+      const startBlock = Number(await sourceGateway.activationBlock());
+      const confirmed = await origin.getBlockNumber() - confirmationDepth;
+      assert(Number.isSafeInteger(startBlock) && startBlock > 0, "invalid gateway activation block");
+      for (let from = startBlock; from <= confirmed; from += chunkSize) {
+        const to = Math.min(confirmed, from + chunkSize - 1);
+        const events = await sourceGateway.queryFilter(
+          sourceGateway.filters.ILNOperation(routeId, id, destinationDomain), from, to,
+        );
+        if (events.length > 0) {
+          assert(events.length === 1 && operationBlock === 0, "duplicate Gateway operations");
+          operationBlock = events[0].blockNumber;
+        }
+      }
+    }
+    assert(operationBlock > 0, "canonical source Gateway operation not found");
+    await attestations.send("xgr_requestILNQuorum", [routeName, id, operationBlock]);
+    try {
+      attestation = await attestations.send("xgr_getILNQuorumAttestation", [routeName, id, Number(currentSetId)]);
+    } catch {
+      console.log(JSON.stringify({
+        status: "PENDING",
+        messageId: id,
+        route: routeName,
+        sourceBlockNumber: operationBlock,
+        currentSetId: String(currentSetId),
+        note: "Public quorum requested. Rerun the same command after the validators finish their independent source and destination checks.",
+      }, null, 2));
+      return;
+    }
+  }
 
   eq("attestation route name", attestation.chain, routeName);
   eq("attestation message ID", attestation.authorizedMessageId, id);
@@ -224,7 +261,10 @@ async function main() {
   assert(operationBlock <= latestSource - confirmationDepth, "source block not sufficiently confirmed");
 
   const historicRoute = await sourceRegistry.getRoute(destinationDomain, routeId, { blockTag: operationBlock });
-  assert(historicRoute.enabled, "route was disabled at source operation block");
+  // A governance action later in the same source block may disable this route.
+  // An emitted fee-qualified operation from the canonical immutable Gateway
+  // proves the route was enabled when bridge() actually executed.
+  // Block-end 'enabled' is NOT a valid test of earlier tx state.
   assert(BigInt(historicRoute.sourceChainId) === originChainId, "historic route source chain mismatch");
   assert(Number(historicRoute.sourceDomain) === originDomain, "historic route source domain mismatch");
   for (const [field, actual, expected] of [
@@ -245,10 +285,10 @@ async function main() {
     BigInt(operation.args.validatorFeeWei) === BigInt(attestation.validatorFeeWei),
     "Gateway operation fee does not match signed fee",
   );
-  assert(
-    BigInt(historicRoute.validatorFeeWei) === BigInt(attestation.validatorFeeWei),
-    "historical fee does not match Gateway operation",
-  );
+  // Gateway.bridge() enforces its native source fee atomically and emits
+  // ILNOperation from its canonical address. Matching it with Dispatch in
+  // the SAME successful receipt is the historical fee proof, not getRoute()
+  // at block end (which can reflect subsequent governance changes).
 
   const dispatches = await sourceMailbox.queryFilter(
     sourceMailbox.filters.Dispatch(
@@ -296,7 +336,7 @@ async function main() {
 
   const { messageIndex, proof } = await reconstructProof(operationBlock, checkpointIndex);
   eq("Merkle inclusion root", branchRoot(id, proof, messageIndex), attestation.root);
-  const inner = encodeISMMetadataV313({
+  const inner = encodeISMMetadataV314({
     messageIndex,
     merkleProof: proof,
     sourceChainId: originChainId,

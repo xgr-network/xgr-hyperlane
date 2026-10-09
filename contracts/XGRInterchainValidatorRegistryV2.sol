@@ -201,6 +201,11 @@ contract XGRInterchainValidatorRegistryV2 {
         return (v.active, v.blsPublicKey, v.deactivationReserveWei);
     }
 
+    /// @notice Cheap recipient view for source-chain ILN fee accounting.
+    function getFeeRecipients() external view returns (address[] memory validators, uint64 currentSetId) {
+        return (activeValidators, setId);
+    }
+
     function getValidatorSet()
         external
         view

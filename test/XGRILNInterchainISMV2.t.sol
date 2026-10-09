@@ -143,7 +143,7 @@ contract XGRILNInterchainISMV2Test is Test {
         // The same valid signed checkpoint must not retain authority
         // once the destination RegistryV2 membership advances.
         XGRInterchainValidatorRegistryV2 registry =
-            XGRInterchainValidatorRegistryV2(address(ism.registry()));
+            XGRInterchainValidatorRegistryV2(payable(address(ism.registry())));
         registry.applyMembership{value: 1 ether}(
             XGRInterchainValidatorRegistryV2.MembershipTransition({
                 expectedSetId: 1,

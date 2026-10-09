@@ -13,6 +13,12 @@ interface IXGRInterchainValidatorSetV2 {
         view
         returns (bool active, uint64 setId);
 
+    /// @notice Source-chain fee distribution reads only the current V2 validator addresses.
+    function getFeeRecipients()
+        external
+        view
+        returns (address[] memory validators, uint64 currentSetId);
+
     function getValidatorSet()
         external
         view

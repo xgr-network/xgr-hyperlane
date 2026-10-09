@@ -3,6 +3,7 @@ pragma solidity ^0.8.24;
 
 import {Test} from "forge-std/Test.sol";
 import {ILNGateway} from "../contracts/ILNGateway.sol";
+import {XGRILNFeeVault} from "../contracts/XGRILNFeeVault.sol";
 import {IXGRILNRegistry} from "../contracts/IXGRILNRegistry.sol";
 import {MockILNWarpRouter} from "../contracts/test/MockILNWarpRouter.sol";
 import {MockXGRILNRegistry} from "../contracts/test/MockXGRILNRegistry.sol";
@@ -98,11 +99,35 @@ contract ILNGatewayTest is Test {
 
         assertTrue(messageId != bytes32(0));
         assertEq(router.balanceOf(USER), 9 ether);
-        assertEq(address(gateway).balance, validatorFee);
+        assertEq(address(gateway).balance, 0);
+        assertEq(address(gateway.feeVault()).balance, validatorFee);
         assertEq(
             gateway.totalValidatorFeesEscrowedWei(),
             validatorFee
         );
+    }
+
+
+    function testBridgeAtomicallyCreditsVaultAndFormerValidatorCanClaim() public {
+        bytes32 recipient = bytes32(uint256(uint160(address(0xCAFE))));
+        (,, uint256 totalNative,) = gateway.quoteILN(DESTINATION_DOMAIN, recipient, 1 ether);
+        vm.prank(USER);
+        bytes32 messageId = gateway.bridge{value: totalNative}(DESTINATION_DOMAIN, recipient, 1 ether);
+        assertTrue(gateway.feeVault().allocatedOperation(messageId));
+        assertEq(address(gateway).balance, 0);
+        assertEq(address(gateway.feeVault()).balance, 1);
+        assertEq(gateway.feeVault().claimable(address(0x101)), 1);
+        assertEq(gateway.feeVault().claimable(address(0x202)), 0);
+
+        address[] memory newerSet = new address[](2);
+        newerSet[0] = address(0x202);
+        newerSet[1] = address(0x303);
+        registry.governanceRegistry().setMembers(newerSet);
+        XGRILNFeeVault vault = gateway.feeVault();
+        vm.prank(address(0x101));
+        vault.claim();
+        assertEq(address(0x101).balance, 1);
+        assertEq(gateway.feeVault().claimable(address(0x101)), 0);
     }
 
     function testDisabledRouteRejected() public {

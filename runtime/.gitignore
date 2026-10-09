@@ -1,7 +1,7 @@
 .env.relayer
 .env.relayer.reverse
-.env.relayer.iln.base-to-xgr
-.env.relayer.iln.xgr-to-base
+.env.relayer.iln.*
+!.env.relayer.iln.*.example
 *.key
 *.pem
 runtime-state/

@@ -2,8 +2,15 @@
 pragma solidity ^0.8.24;
 
 import {IXGRILNRegistry} from "../IXGRILNRegistry.sol";
+import {MockLocalGovernanceRegistry} from "./MockLocalGovernanceRegistry.sol";
 
 contract MockXGRILNRegistry is IXGRILNRegistry {
+    MockLocalGovernanceRegistry public governanceRegistry;
+
+    constructor() {
+        governanceRegistry = new MockLocalGovernanceRegistry(1643);
+    }
+
     mapping(uint32 => mapping(bytes32 => RouteRecord)) private routes;
     mapping(uint32 => mapping(bytes32 => uint64)) private nonces;
 

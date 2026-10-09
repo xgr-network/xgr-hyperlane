@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {IXGRInterchainBLSVerifier} from "../XGRInterchainValidatorRegistry.sol";
+import {IXGRInterchainBLSVerifier} from "../IXGRInterchainBLSVerifier.sol";
 
 contract MockXGRInterchainBLSVerifier is IXGRInterchainBLSVerifier {
     bool public result = true;
