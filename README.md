@@ -11,7 +11,8 @@ Each direction uses an authorized ILNGateway, source FeeVault, source ILNRegistr
 
 ## Current code
 - contracts/: generic v3.1.4 XETA Gateway, local FeeVault, RegistryV2, ILN Registry, BLS verifier and route/message-specific destination ISM.
-- contracts/XETAGatewayOnlyRouterGuard.sol: reusable outgoing route guard MIXIN. It is not a standalone Warp router and must be integrated into a pinned upstream implementation before ANY public route activation.
+- contracts/XETARouterCore.sol: shared guarded Hyperlane 11.1.0 TokenRouter supporting several quorum-controlled destinations; native and synthetic adapters implement only asset custody.
+- script/DeployXETARouters.s.sol: deploy shared native/synthetic asset-router instances independently of route-specific gateways.
 - config/chains/: chain identities and finality; config/assets/: desired canonical asset representations/routes.
 - deployments/mainnet/: observed infrastructure/asset evidence, kept separately from planned contracts. Old v3.1.1 addresses are archival only and do NOT imply ILN v3.1.4 deployment.
 - runtime/native-relayer/: current ILN message relay, quorum and recovery. Existing forward/reverse legacy service control files remain until old bridge shutdown is operationally verified.
@@ -19,7 +20,7 @@ Each direction uses an authorized ILNGateway, source FeeVault, source ILNRegistr
 - docs/XETA_SPEC_V314.md: accepted source of truth for architecture, fees, sponsored refunds, permanent routes and security.
 - docs/XETA_ONBOARDING.md: free partner applications via PR or form.
 - docs/REPOSITORY_LAYOUT.md: current XETA-only project map.\n\n## Non-negotiable protections
-1. New Warp router transferRemote MUST reject direct caller and accept only the canonical ILNGateway; incoming Mailbox handle() must still work. The guarded upstream Hyperlane router itself is not yet implemented or E2E-verified.
+1. New Warp router transferRemote MUST reject direct caller and accept only the canonical ILNGateway; incoming Mailbox handle() must still work. Shared upstream-compatible guarded routers are implemented and covered by unit/integration tests; live fork/mainnet E2E remains a deployment gate.
 2. Users may always redeem wrapped tokens despite website delisting from featured/top lists. Inactivity MUST NEVER turn a working on-chain route off. Emergency pause requires quorum-controlled safety operation and recovery policy.
 3. Normal on-chain positive validator fees are collected in source-native currency and claimable via FeeVault; optional subsidy is an offchain, verified, budget-limited refund, not a new privileged contract.
 4. All routes are approved using 2/3 current registry BLS quorum, never by a GmbH-owned admin key.
