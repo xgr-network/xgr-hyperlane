@@ -15,7 +15,7 @@ XGRChain (chain ID/domain 1643) is the central hub. Base, Polygon and Arbitrum a
 `config/chains/` lists supported/planned networks. `config/assets/XGR/{asset,routes,mainnet}.json` defines native XGR, planned wXGR representations and six directed hub-only routes. `deployments/mainnet/` contains verified observations; null values must remain null until deployment and governance are confirmed.
 
 ## XETA web platform
-The standalone UI is intended for `xeta.xgr.network` and belongs with the protocol in the future `xgr-interchain` repository; `XGR_Web` remains the umbrella website. Overview, Markets, /join and /token/:id form the token-first standalone frontend in `apps/web`. **The token page itself contains the Bridge experience; there is no separate /bridge product.** The existing `bridge.xgr.network` redirects only after historical redemption remains safe. See `docs/XETA_UI_ARCHITECTURE.md`.
+The standalone UI is intended for `xeta.xgr.network` and belongs with the protocol in the future `xgr-interchain` repository; `XGR_Web` remains the umbrella website. Overview, Markets, /join and /token/:id form the token-first standalone frontend in `apps/web`. **The token page itself contains the Bridge experience; there is no separate /bridge product.** The former `bridge.xgr.network` hostname will redirect to `/token/xgr` once XETA launches. See `docs/XETA_UI_ARCHITECTURE.md`.
 
 ## Economic guarantees
 Alliance applications and standard integration are free. Token and route approval requires quorum. Source-native validator fees remain positive; offchain promotional refunds are optional. Future XGRChain hop sponsorship is not yet deployed. Inactive routes must remain accessible for redeem and recovery.
@@ -31,4 +31,4 @@ cd runtime/native-relayer && npm test
 ```
 
 ## Production boundary
-The prior v3.1.1 bridge and its original synthetic supply remain separately accountable. This source cleanup neither deletes on-chain contracts nor shuts down servers. Any migration must preserve historical user balances and permissionless recovery. Do not deploy or advertise new routes until real cross-chain custody, validator signatures, ISM/EIP-2537 compatibility and relayer-outage recovery pass.
+XETA uses newly deployed routers, tokens and routes; token representations start with independently verified new supply. Do not deploy or advertise new routes until real cross-chain custody, validator signatures, ISM/EIP-2537 compatibility and relayer-outage recovery pass.
