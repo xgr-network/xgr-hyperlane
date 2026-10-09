@@ -94,21 +94,75 @@ function marketRow(id){
  '<td>'+x(indexedCount(id,"last24h"))+'</td><td>'+x(amountFor(id,"last24h"))+'</td>'+
  '<td>'+activeFor(id)+" / "+data.routes.routes.length+'</td></tr>';
 }
+function feeBreakdown(id){
+ const rows=state.assetStats[id]?.lifetime||[];
+ if(!rows.length)return "No indexed validator fees";
+ return rows.map(row=>{
+  const chain=Object.values(state.catalog.chains).find(c=>c.chainId===row.sourceChainId);
+  return fmt(BigInt(row.feeWei||"0"))+" "+(chain?.nativeCurrency?.symbol||"native")+" ("+
+    x(chain?.name||row.sourceChainId)+")";
+ }).join(" · ");
+}
+function historyMarkup(id){
+ const data=state.transfers[id];
+ if(!data)return '<p class="muted">Event history is not available yet.</p>';
+ if(!data.items?.length)return '<p class="muted">No confirmed XETA Gateway operations observed in the indexed coverage.</p>';
+ return '<div style="overflow:auto"><table class="table"><thead><tr>'+
+  '<th>Time</th><th>Direction</th><th>Transferred</th><th>Status</th><th>Message</th></tr></thead><tbody>'+
+  data.items.map(item=>{
+   const src=Object.values(state.catalog.chains).find(c=>c.chainId===item.sourceChainId);
+   const dst=Object.values(state.catalog.chains).find(c=>c.chainId===item.destinationChainId);
+   const amount=item.amountRaw===null||item.amountRaw===undefined?"Unknown":fmt(BigInt(item.amountRaw),asset().metadata.decimals)+" "+id;
+   const mid=String(item.messageId||"");
+   return '<tr><td>'+x(displayUnix(item.timestamp))+'</td><td>'+
+    x((src?.name||item.sourceChainId)+" → "+(dst?.name||item.destinationChainId))+'</td><td>'+x(amount)+'</td><td>'+
+    (item.delivered?'<span class="live-chip">Delivered</span>':'<span class="tag">Delivery unverified</span>')+'</td><td><span title="'+x(mid)+'">'+
+    x(mid.slice(0,10)+"…"+mid.slice(-6))+'</span></td></tr>';
+  }).join("")+'</tbody></table></div>';
+}
+function tokenActivity(id){
+ const last=summaryFor(id,"last24h"),week=summaryFor(id,"sevenDays"),all=summaryFor(id,"lifetime");
+ return '<div class="cards">'+metric("24h transfers",last?String(last.count):"—","Confirmed source operations")+
+ metric("7-day transfers",week?String(week.count):"—","Indexed Gateway events")+
+ metric("Delivered",all?all.delivered+" observed":"—","Destination Mailbox verified")+
+ metric("24h bridge volume",amountFor(id,"last24h"),"No value invented for indirect transfers")+'</div>'+
+ '<div class="card"><h3>Validator fees (indexed lifetime)</h3><p class="muted">'+x(feeBreakdown(id))+'</p>'+
+ '<small class="muted">Source-native amounts are listed by chain and never aggregated across denominations.</small></div>'+
+ '<h3>Recent source transfers</h3>'+historyMarkup(id)+indexerNotice();
+}
 function token(){
+ const id=state.assetId,a=asset(),p=profile(id),canonical=a.metadata.canonical?.chain||"unknown";
+ const chips=(p.categories||[]).map(cat=>'<span class="category-chip">'+x(cat)+'</span>').join(" ");
  return '<div class="columns"><article><a href="/markets" data-nav class="muted">← All tokens</a>'+
- '<div class="token-link section"><div class="logo">X</div><div><div class="eyebrow">Canonical network · XGRChain</div><h1>XGR / wXGR</h1><span class="tag">XETA v3.1.4 · Pre-deployment</span></div></div>'+
- '<div class="card"><h2>Asset profile</h2><p class="muted">Native XGR on XGRChain (1643). wXGR representations on Base, Polygon and Arbitrum become available following verified activation.</p>'+
- '<div class="pair"><span>Decimals</span><b>'+asset().metadata.decimals+'</b></div><div class="pair"><span>Active routes</span><b>'+active()+' / '+routes().length+'</b></div><div class="pair"><span>Market data</span><b>Awaiting verified feed</b></div></div>'+
- '<section class="section"><h2>Available networks</h2><div class="routes">'+routes().map(r=>'<div class="route"><strong>'+routeName(r)+'</strong><div style="margin-top:10px">'+tag(r)+'</div></div>').join("")+'</div></section>'+
- '<section class="section"><h2>Validator governance</h2><p class="muted">Transfers require an active route approved by the validator quorum, a verified source Gateway, and independent Mailbox delivery on the destination chain.</p></section></article>'+
- '<aside class="card"><div class="eyebrow">Bridge XGR</div><h2>Transfer this token</h2><p class="muted">Select the source and destination. Quotes use the source Gateway; approvals are granted to the Gateway, not a Warp router.</p>'+
- '<label class="field" for="route">Route</label><select id="route">'+routes().map(r=>'<option value="'+r.name+'">'+routeName(r)+' · '+(route(r.name).allowed?"verified":"planned")+'</option>').join("")+'</select>'+
- '<label class="field" for="amount">Amount (XGR)</label><input id="amount" inputmode="decimal" placeholder="0.0" autocomplete="off">'+
+ '<div class="token-link section">'+projectLogo(id)+'<div><div class="eyebrow">'+x(names[canonical]||canonical)+' · Canonical asset</div>'+
+ '<h1>'+x(p.name)+' <small>'+x(id)+'</small></h1><span class="tag">'+x(p.verification?.status||"project-maintained")+'</span></div></div>'+
+ '<div class="card"><h2>Project overview</h2><p class="lead" style="font-size:16px">'+x(p.shortDescription)+'</p>'+
+ '<p class="muted">'+x(p.description)+'</p>'+chips+
+ '<div class="pair"><span>Canonical network</span><b>'+x(names[canonical]||canonical)+'</b></div>'+
+ '<div class="pair"><span>Token decimals</span><b>'+a.metadata.decimals+'</b></div>'+
+ '<div class="pair"><span>Verified routes</span><b>'+active()+' / '+routes().length+'</b></div>'+
+ '<div class="pair"><span>Market price</span><b>'+x(displayPrice(state.prices[id]))+'</b></div>'+
+ '<div class="pair"><span>Market capitalization</span><b>Not available from verified feed</b></div>'+
+ '<h3>Project links</h3><div class="project-links">'+projectLinks(id)+'</div></div>'+
+ '<section class="section"><h2>Network representations</h2><div class="routes">'+a.metadata.representations.map(rep=>
+  '<div class="route"><strong>'+x(names[rep.chain]||rep.chain)+'</strong> · '+x(rep.symbol)+
+  '<p class="muted">'+x(rep.representation)+' · '+(rep.assetAddress?x(rep.assetAddress):"Deployment pending verification")+'</p></div>').join("")+'</div></section>'+
+ '<section class="section"><h2>Interchain routes</h2><div class="routes">'+routes().map(rt=>
+  '<div class="route"><strong>'+x(routeName(rt))+'</strong><div style="margin-top:10px">'+tag(rt)+'</div></div>').join("")+'</div></section>'+
+ '<section class="section"><h2>Verified transfer activity</h2><div id="token-activity">'+tokenActivity(id)+'</div></section>'+
+ '<section class="section"><h2>Validator governance and recovery</h2><p class="muted">Transfers require a quorum-approved source route and successful destination Mailbox delivery. A source transaction is not proof of destination settlement. Recovery uses the original message ID and never a second bridge transfer.</p></section>'+
+ '</article><aside class="card"><div class="eyebrow">Transfer '+x(id)+'</div><h2>Bridge this token</h2>'+
+ '<p class="muted">Select the source and destination. Live fee quotes and ERC-20 approvals use the authorized Gateway, never direct Warp-router transfers.</p>'+
+ '<label class="field" for="route">Route</label><select id="route">'+routes().map(rt=>
+  '<option value="'+x(rt.name)+'">'+x(routeName(rt))+' · '+(route(rt.name).allowed?"verified":"planned")+'</option>').join("")+'</select>'+
+ '<label class="field" for="amount">Amount ('+x(id)+')</label><input id="amount" inputmode="decimal" placeholder="0.0" autocomplete="off">'+
  '<div id="route-note">'+note("Route not activated. No unverified contracts can receive funds.")+'</div>'+
  '<div class="note section" id="quote">No live quote available.</div>'+
  '<button class="wide alt" id="quote-btn" disabled>Request Gateway quote</button><button class="wide" id="bridge-btn" disabled>Bridge token</button>'+
  '<p class="status" id="status">Connect an EVM wallet to begin.</p>'+
- '<div id="transfer" class="hidden"><h3>Transfer status</h3><p class="status" id="message-id"></p><button class="wide alt" id="check-delivery">Check destination delivery</button><p class="status" id="delivery"></p></div></aside></div>';
+ '<div id="transfer" class="hidden"><h3>Transfer status</h3><p class="status" id="message-id"></p>'+
+ '<button class="wide alt" id="check-delivery">Check destination delivery</button><p class="status" id="delivery"></p></div>'+
+ '</aside></div>';
 }
 function join(){
  return '<div class="eyebrow">Join the XGR EVM Token Alliance</div><h1>Bring your token to more networks.</h1>'+
