@@ -36,7 +36,7 @@ function markets(){
 function token(){
  return '<div class="columns"><article><a href="/markets" data-nav class="muted">← All tokens</a>'+
  '<div class="token-link section"><div class="logo">X</div><div><div class="eyebrow">Canonical network · XGRChain</div><h1>XGR / wXGR</h1><span class="tag">XETA v3.1.4 · Pre-deployment</span></div></div>'+
- '<div class="card"><h2>Asset profile</h2><p class="muted">Native XGR on XGRChain (1643). The new synthetic wXGR representations on Base, Polygon and Arbitrum use entirely new contracts. Prior wXGR supply is not collateral for XETA tokens.</p>'+
+ '<div class="card"><h2>Asset profile</h2><p class="muted">Native XGR on XGRChain (1643). wXGR representations on Base, Polygon and Arbitrum become available following verified activation.</p>'+
  '<div class="pair"><span>Decimals</span><b>'+asset().metadata.decimals+'</b></div><div class="pair"><span>Active routes</span><b>'+active()+' / '+routes().length+'</b></div><div class="pair"><span>Market data</span><b>Awaiting verified feed</b></div></div>'+
  '<section class="section"><h2>Available networks</h2><div class="routes">'+routes().map(r=>'<div class="route"><strong>'+routeName(r)+'</strong><div style="margin-top:10px">'+tag(r)+'</div></div>').join("")+'</div></section>'+
  '<section class="section"><h2>Validator governance</h2><p class="muted">Transfers require an active route approved by the validator quorum, a verified source Gateway, and independent Mailbox delivery on the destination chain.</p></section></article>'+
@@ -47,7 +47,6 @@ function token(){
  '<div class="note section" id="quote">No live quote available.</div>'+
  '<button class="wide alt" id="quote-btn" disabled>Request Gateway quote</button><button class="wide" id="bridge-btn" disabled>Bridge token</button>'+
  '<p class="status" id="status">Connect an EVM wallet to begin.</p>'+
- '<div class="notice"><b>Legacy redemption:</b> Historical v3.1.1 wXGR is a separate deployment. Keep the old redemption system operational until a safe redemption path is integrated here. Do not redirect the existing bridge yet.</div>'+
  '<div id="transfer" class="hidden"><h3>Transfer status</h3><p class="status" id="message-id"></p><button class="wide alt" id="check-delivery">Check destination delivery</button><p class="status" id="delivery"></p></div></aside></div>';
 }
 function join(){
