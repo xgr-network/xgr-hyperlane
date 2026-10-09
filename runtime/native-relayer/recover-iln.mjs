@@ -20,7 +20,7 @@ import { wrapAggregationMetadata } from "./metadata.mjs";
 import {
   ILN_OPERATION_EVENT,
   encodeCheckpointPayloadV2,
-  encodeISMMetadataV313,
+  encodeISMMetadataV314,
   requireRouteId,
 } from "./iln-codec.mjs";
 
@@ -342,7 +342,7 @@ async function main() {
 
   const { messageIndex, proof } = await reconstructProof(operationBlock, checkpointIndex);
   eq("Merkle inclusion root", branchRoot(id, proof, messageIndex), attestation.root);
-  const inner = encodeISMMetadataV313({
+  const inner = encodeISMMetadataV314({
     messageIndex,
     merkleProof: proof,
     sourceChainId: originChainId,

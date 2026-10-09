@@ -1,7 +1,12 @@
-# Repository structure and legacy boundary
+# XETA v3.1.4 repository layout
 
-Active v3.1.4 Solidity: contracts/; active Forge tests: test/; active asset declarations: config/; immutable on-chain inventories: deployments/mainnet/.
+contracts/ and test/: active ILN v3.1.4 contracts, security mixin, unit tests.
+script/DeployXETA.s.sol: generic chain infrastructure/Gateway deployments; governance route ADD remains separate.
+config/chains/: chain settings, planned Polygon and Arbitrum pending independent validation.
+config/assets/XGR/: canonical native XGR, new wXGR on Base/Polygon/Arbitrum, six directed XGR-hub routes.
+deployments/mainnet/: observed mainnet Hyperlane cores and explicit NULL values for undeployed XETA security contracts and routes.
+runtime/native-relayer/: ILN v3.1.4 relayer, codec, independently constructible recovery calldata. No V1 service scripts.
+docs/XETA_SPEC_V314.md and docs/XETA_ONBOARDING.md: binding product policy.
 
-Historical V1 verifier/ISM/source tests and the reverse deployment script are preserved verbatim as TXT under docs/legacy/source/. Old v3.1.2 and v3.1.3 deployment/plan docs moved to docs/legacy/. They are neither build inputs nor production instructions. Generic v3.1.4 contracts are not deleted or renamed. The historical v3.1.1 relayer start/stop scripts remain available ONLY to safely retire the service; remove these after on-server decommissioning, not before.
-
-New guarded router implementation and live mainnet precompile / custody E2E tests remain activation blockers. Current XETAGatewayOnlyRouterGuard is a reusable mixin, NOT a functioning WarpRouter.
+Historical V1 contracts, old bridge addresses/relayers and archived documents have been removed from this branch. On-chain history is not deleted or altered. Do not run this clean branch's runtime manager as a substitute for stopping any existing legacy services on the live server.
+New guarded upstream Warp router integration and full custody E2E checks remain required before XETA route activation.

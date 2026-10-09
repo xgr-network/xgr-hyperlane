@@ -15,12 +15,10 @@ Each direction uses an authorized ILNGateway, source FeeVault, source ILNRegistr
 - config/chains/: chain identities and finality; config/assets/: desired canonical asset representations/routes.
 - deployments/mainnet/: observed infrastructure/asset evidence, kept separately from planned contracts. Old v3.1.1 addresses are archival only and do NOT imply ILN v3.1.4 deployment.
 - runtime/native-relayer/: current ILN message relay, quorum and recovery. Existing forward/reverse legacy service control files remain until old bridge shutdown is operationally verified.
-- script/DeployV313.s.sol: CURRENT generic deployment entrypoint retains an older file name for CLI compatibility, but deploys ILN Registry, Gateway, ValidatorRegistryV2, EIP2537 verifier and generic destination ILN ISM. It does NOT activate governance routes.
+- script/DeployXETA.s.sol: CURRENT generic deployment entrypoint retains an older file name for CLI compatibility, but deploys ILN Registry, Gateway, ValidatorRegistryV2, EIP2537 verifier and generic destination ILN ISM. It does NOT activate governance routes.
 - docs/XETA_SPEC_V314.md: accepted source of truth for architecture, fees, sponsored refunds, permanent routes and security.
 - docs/XETA_ONBOARDING.md: free partner applications via PR or form.
-- docs/legacy/: historic and superseded implementation notes, old V1 sources and tests retained as non-compiling text archival evidence. Never treat as current production deployment instructions.
-
-## Non-negotiable protections
+- docs/REPOSITORY_LAYOUT.md: current XETA-only project map.\n\n## Non-negotiable protections
 1. New Warp router transferRemote MUST reject direct caller and accept only the canonical ILNGateway; incoming Mailbox handle() must still work. The guarded upstream Hyperlane router itself is not yet implemented or E2E-verified.
 2. Users may always redeem wrapped tokens despite website delisting from featured/top lists. Inactivity MUST NEVER turn a working on-chain route off. Emergency pause requires quorum-controlled safety operation and recovery policy.
 3. Normal on-chain positive validator fees are collected in source-native currency and claimable via FeeVault; optional subsidy is an offchain, verified, budget-limited refund, not a new privileged contract.
@@ -36,5 +34,4 @@ Each direction uses an authorized ILNGateway, source FeeVault, source ILNRegistr
 
 Passing mocked Foundry unit tests is not equal to a successful live cross-chain transfer. Mainnet route state must be verified on-chain before being advertised as active.
 
-## Legacy evidence
-The historical v3.1.1 Base bridge, its deployed addresses, 0.9 synthetic wXGR and legacy relayer scripts are **retired or pending decommission**, not deleted from chain history. Archive-only records remain in deployments/ and docs/legacy/. No new v3.1.4 supply can claim those legacy locked assets as collateral.
+## XETA-only branch boundary\nOld v3.1.1/V1 source files, relayers and on-chain router addresses are not part of this branch. Existing chain history remains verifiable externally. Production migrations require an independent on-chain handover checklist; do not delete running services by merely checking out this branch.\n

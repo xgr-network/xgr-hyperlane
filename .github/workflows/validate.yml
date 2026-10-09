@@ -32,9 +32,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          jq empty deployments/xgrchain-mainnet.json
-          jq empty deployments/xgr-base-route.json
-          jq empty runtime/xgrchain.json
+          find config deployments/mainnet -name "*.json" -print0 | xargs -0 -n1 jq empty
           jq empty runtime/native-relayer/package.json
 
       - name: Validate multi-asset and deployment manifest invariants
@@ -48,7 +46,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          bash -n runtime/checkpoint-status.sh
           bash -n runtime/manage-relayers.sh
           find runtime/native-relayer -maxdepth 1 -name '*.mjs' -print0 | xargs -0 -n1 node --check
 

@@ -15,7 +15,7 @@ import {
   snapshotNodes,
 } from "./merkle.mjs";
 import { wrapAggregationMetadata } from "./metadata.mjs";
-import { ILN_OPERATION_EVENT, requireRouteId, encodeCheckpointPayloadV2, encodeISMMetadataV313 } from "./iln-codec.mjs";
+import { ILN_OPERATION_EVENT, requireRouteId, encodeCheckpointPayloadV2, encodeISMMetadataV314 } from "./iln-codec.mjs";
 
 const env = (name, fallback = undefined) => {
   const value = process.env[name] ?? fallback;
@@ -611,7 +611,7 @@ function buildMetadata(state, id, operation, attestation) {
     );
   }
 
-  const innerMetadata = encodeISMMetadataV313({
+  const innerMetadata = encodeISMMetadataV314({
     messageIndex,
     merkleProof: proof,
     sourceChainId: ORIGIN_CHAIN_ID,

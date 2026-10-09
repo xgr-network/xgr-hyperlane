@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { AbiCoder, Interface, getBytes, keccak256 } from "ethers";
-import { ILN_OPERATION_EVENT, CHECKPOINT_DOMAIN_V2, ISM_V314_METADATA_TYPES, requireRouteId, encodeCheckpointPayloadV2, encodeISMMetadataV314 } from "./iln-v313.mjs";
+import { ILN_OPERATION_EVENT, CHECKPOINT_DOMAIN_V2, ISM_V314_METADATA_TYPES, requireRouteId, encodeCheckpointPayloadV2, encodeISMMetadataV314 } from "./iln-codec.mjs";
 
 const routeId = "0x" + "aa".repeat(32);
 const msgId = "0x" + "bb".repeat(32);

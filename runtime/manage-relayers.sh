@@ -7,14 +7,6 @@ mkdir -p "$STATE_DIR"
 
 env_file() {
   case "$1" in
-    forward)
-      if [ -f "$RUNTIME_DIR/.env.relayer" ]; then
-        printf '%s\n' "$RUNTIME_DIR/.env.relayer"
-      else
-        printf '%s\n' "$RUNTIME_DIR/relayer-forward-mainnet.env"
-      fi
-      ;;
-    reverse) printf '%s\n' "$RUNTIME_DIR/.env.relayer.reverse" ;;
     iln-base-to-xgr) printf '%s\n' "$RUNTIME_DIR/.env.relayer.iln.base-to-xgr" ;;
     iln-xgr-to-base) printf '%s\n' "$RUNTIME_DIR/.env.relayer.iln.xgr-to-base" ;;
     *) return 1 ;;
@@ -23,7 +15,6 @@ env_file() {
 
 script_file() {
   case "$1" in
-    forward|reverse) printf '%s\n' "$RUNTIME_DIR/native-relayer/index.mjs" ;;
     iln-base-to-xgr|iln-xgr-to-base) printf '%s\n' "$RUNTIME_DIR/native-relayer/iln.mjs" ;;
     *) return 1 ;;
   esac
@@ -31,8 +22,6 @@ script_file() {
 
 pid_file() {
   case "$1" in
-    forward) printf '%s\n' "$STATE_DIR/native-relayer.pid" ;;
-    reverse) printf '%s\n' "$STATE_DIR/native-relayer-reverse.pid" ;;
     iln-base-to-xgr) printf '%s\n' "$STATE_DIR/native-iln-base-to-xgr.pid" ;;
     iln-xgr-to-base) printf '%s\n' "$STATE_DIR/native-iln-xgr-to-base.pid" ;;
     *) return 1 ;;
@@ -41,8 +30,6 @@ pid_file() {
 
 log_file() {
   case "$1" in
-    forward) printf '%s\n' "$STATE_DIR/native-relayer.log" ;;
-    reverse) printf '%s\n' "$STATE_DIR/native-relayer-reverse.log" ;;
     iln-base-to-xgr) printf '%s\n' "$STATE_DIR/native-iln-base-to-xgr.log" ;;
     iln-xgr-to-base) printf '%s\n' "$STATE_DIR/native-iln-xgr-to-base.log" ;;
     *) return 1 ;;
@@ -167,17 +154,14 @@ for_each_target() {
   local target="$2"
 
   case "$target" in
-    forward|reverse|iln-base-to-xgr|iln-xgr-to-base)
+    iln-base-to-xgr|iln-xgr-to-base)
       "${action}_one" "$target"
       ;;
     all)
-      # "all" intentionally means the established production relayers only.
-      # The ILN relayer must always be started explicitly until ILN is activated.
-      "${action}_one" forward || return 1
-      "${action}_one" reverse
+      "${action}_one" iln-base-to-xgr || return 1\n      "${action}_one" iln-xgr-to-base
       ;;
     *)
-      echo "target must be forward, reverse, iln-base-to-xgr, iln-xgr-to-base or all" >&2
+      echo "target must be iln-base-to-xgr, iln-xgr-to-base or all" >&2
       return 1
       ;;
   esac
@@ -208,7 +192,7 @@ case "$ACTION" in
     logs_one "$TARGET"
     ;;
   *)
-    echo "usage: $0 {start|stop|restart|status|logs} [forward|reverse|iln-base-to-xgr|iln-xgr-to-base|all]" >&2
+    echo "usage: $0 {start|stop|restart|status|logs} [iln-base-to-xgr|iln-xgr-to-base|all]" >&2
     exit 1
     ;;
 esac
