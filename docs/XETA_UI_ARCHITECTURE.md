@@ -1,13 +1,33 @@
-# XETA web product — architecture plan
-Status: planned, not implemented. Destination: **xeta.xgr.network** under the future public **xgr-interchain** repository, independent of XGR_Web.
+# XETA web product — token-first implementation
+Status: **initial frontend implemented** in `apps/web`, pre-deployment. Target: xeta.xgr.network.
 
-- /: Explained network overview, verified route count, bridged assets and volume, validator/quorum security, native fees and live-vs-planned state.
-- /markets: searchable, sortable token rankings. Market cap and trading volume come from timestamped price/DEX sources, while XETA moved volume and bridged value come from indexed authenticated transfers; never double count locked collateral and wrapped supply.
-- /bridge: standalone universal Bridge widget and Wallet/RPC status.
-- /token/:id: discoverable canonical token identity, chain/contract verification, price/liquidity information, **embedded operational Bridge widget** preselected to that token, quote, allowance, signing, delivery progress and recovery.
-- /join: free Alliance application through website or GitHub PR producing the same manifest proposal. Signed token/project ownership proof and review; quorum-only route activation.
-- /routes: future cross-chain graph router with DEX edge quotes + XETA bridge edges. Non-atomic multi-step execution needs slippage control and compensating/recovery flows. Do not promise gasless hub transfers without the separate XGR hop sponsor.
+## Product structure
+- `/` — explained overview, honest inventory counts and XGRChain hub model.
+- `/markets` — searchable token directory, with market/bridge metrics explicitly unavailable until verified indexing.
+- `/token/xgr` (and optional `/xgr`) — canonical XGR profile **with embedded transfer form**, route choices, live Gateway quote, wallet signing and destination delivery check.
+- `/join` — Alliance application **local JSON export only**. It neither transmits nor approves a proposal. Future submission backend must be separately implemented.
+- `/routes` — explanatory placeholder for future non-atomic DEX+XETA routing.
+- There is **no separate bridge product** or `/bridge` route. `bridge.xgr.network` should ultimately point to `/token/xgr`, only after historical wXGR redemption remains available through an independently verified migration.
 
-Use one shared bridge SDK and UI component for /bridge and token pages. Bridge MUST call ILNGateway.quoteILN and bridge, never public Warp transferRemote. Status derives from real source receipts, signed attestations and destination Mailbox.delivered. A partner's premium subdomain must not be able to inject executable wallet/bridge code.
+## Bridge implementation
+A reusable protocol module, `apps/web/protocol.mjs`, encodes and calls `ILNGateway.quoteILN` and `ILNGateway.bridge`, validates source-chain ILN Registry route against verified deployment inventory, supports exact Gateway-only ERC-20 allowance, decodes the source `ILNOperation` event, and checks destination `Mailbox.delivered`. Direct Warp transfers are prohibited. Browser Ethereum ABI function selectors are computed with Ethereum Keccak (not SHA3).
 
-Proposed directories: apps/web, services/indexer, services/market-data, services/onboarding, packages/sdk. Route visibility must never disable the onchain withdrawal path.
+**Do not enable live routes from desired config alone.** A route is selectable for executable quote only when quorum activation, verified infrastructure, source Gateway/router/vault, route binding and governance receipt have been recorded, followed by on-chain validation. The UI does not deploy, activate, or assert delivery on its own. The on-chain protocol and node are unchanged.
+
+## Build and test
+```sh
+node tools/build-xeta-web-catalog.mjs
+node tools/build-xeta-web-catalog.mjs --check
+node --test apps/web/keccak.test.mjs
+node --check apps/web/app.mjs
+node --check apps/web/protocol.mjs
+```
+
+Static hosting requires SPA fallback to index.html, correct relative paths and strict HTTP security headers. Historical v3.1.1 wrapped supply is not backed by XETA's new collateral. Existing users must retain a functioning redeem path before switching DNS or redirecting the old website.
+
+## Release blockers
+1. Independent wallet/contract E2E on all actual target chains, including native and synthetic quote values, approval, source receipt and destination delivery.
+2. Historical wXGR redeem integration and migration testing.
+3. Persistent event indexer for messages and rankings; verified external pricing source for market data.
+4. Application backend and signed ownership verification if web submission is desired.
+5. Real deployed manifest and governance evidence before any UI is declared live.

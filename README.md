@@ -15,7 +15,7 @@ XGRChain (chain ID/domain 1643) is the central hub. Base, Polygon and Arbitrum a
 `config/chains/` lists supported/planned networks. `config/assets/XGR/{asset,routes,mainnet}.json` defines native XGR, planned wXGR representations and six directed hub-only routes. `deployments/mainnet/` contains verified observations; null values must remain null until deployment and governance are confirmed.
 
 ## XETA web platform
-The standalone UI is intended for `xeta.xgr.network` and belongs with the protocol in the future `xgr-interchain` repository; `XGR_Web` remains the umbrella website. Overview, Markets, /bridge, /join and /token/:id are planned. **Every token profile must contain the same working Bridge component as /bridge**, not merely a hyperlink. See `docs/XETA_UI_ARCHITECTURE.md`.
+The standalone UI is intended for `xeta.xgr.network` and belongs with the protocol in the future `xgr-interchain` repository; `XGR_Web` remains the umbrella website. Overview, Markets, /join and /token/:id form the token-first standalone frontend in `apps/web`. **The token page itself contains the Bridge experience; there is no separate /bridge product.** The existing `bridge.xgr.network` redirects only after historical redemption remains safe. See `docs/XETA_UI_ARCHITECTURE.md`.
 
 ## Economic guarantees
 Alliance applications and standard integration are free. Token and route approval requires quorum. Source-native validator fees remain positive; offchain promotional refunds are optional. Future XGRChain hop sponsorship is not yet deployed. Inactive routes must remain accessible for redeem and recovery.
