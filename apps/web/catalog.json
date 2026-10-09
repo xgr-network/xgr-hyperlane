@@ -180,7 +180,7 @@
           }
         ],
         "bridgeModel": "lock-mint-burn-unlock",
-        "notes": "XETA v3.1.4 canonical asset: native XGR on XGRChain. All wXGR contracts and routers are NEW and unverified; no reuse of legacy locked collateral."
+        "notes": "XETA v3.1.4 canonical asset: native XGR on XGRChain. Wrapped token contracts and route deployments require independent verification."
       },
       "mainnet": {
         "schemaVersion": 1,
