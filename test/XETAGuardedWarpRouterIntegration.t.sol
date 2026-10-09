@@ -99,7 +99,6 @@ contract XETARouterIntegrationTest is Test {
         XETAMockGatewayBinding gateway=route(address(nativeRouter),BASE,bytes32(uint256(1)),address(0x1111));
         vm.expectRevert(XETARouterCore.XETAInvalidRoute.selector);
         nativeRouter.transferRemote(BASE,bytes32(uint256(1)),1);
-        vm.expectRevert(XETARouterCore.XETAInvalidGatewayBinding.selector);
         // Replace canonical gateway with a non-contract; bootstrap must reject it.
         reg.setRoute(BASE,bytes32(uint256(1)),IXGRILNRegistry.RouteRecord({
             sourceChainId:uint64(block.chainid),sourceDomain:HUB,
@@ -107,6 +106,7 @@ contract XETARouterIntegrationTest is Test {
             mailbox:address(mailbox),merkleTreeHook:address(mailbox),
             destinationRouter:address(0x1111),validatorFeeWei:7,enabled:true
         }));
+        vm.expectRevert(XETARouterCore.XETAInvalidGatewayBinding.selector);
         nativeRouter.bootstrapXETARoute(BASE,bytes32(uint256(1)));
         // Silence unused warning while keeping the original authentic gateway alive.
         assertTrue(address(gateway)!=address(0));
