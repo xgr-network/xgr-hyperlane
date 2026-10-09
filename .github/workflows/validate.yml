@@ -60,6 +60,14 @@ jobs:
           find runtime/native-relayer -maxdepth 1 -name '*.mjs' -print0 | xargs -0 -n1 node --check
           find apps/web -maxdepth 1 -name '*.mjs' -print0 | xargs -0 -n1 node --check
 
+      - name: Validate operator admin
+        shell: bash
+        run: |
+          set -euo pipefail
+          find services/admin -maxdepth 1 -name '*.mjs' -print0 | xargs -0 -n1 node --check
+          node --check services/admin/admin.js
+          node --test services/admin/plan.test.mjs
+
       - name: Native relayer tests
         shell: bash
         run: |
