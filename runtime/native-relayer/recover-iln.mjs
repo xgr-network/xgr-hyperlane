@@ -192,13 +192,7 @@ async function main() {
   } catch {
     // First-time delivery and post-rotation recovery use exactly the same
     // public request path. No relayer or operator-specific signing endpoint.
-    let old;
-    try {
-      old = await attestations.send("xgr_getILNInterchainAttestation", [routeName, id]);
-    } catch {
-      old = null;
-    }
-    let operationBlock = old ? Number(old.sourceBlockNumber) : 0;
+    let operationBlock = 0;
     if (!Number.isSafeInteger(operationBlock) || operationBlock <= 0) {
       const startBlock = Number(await sourceGateway.activationBlock());
       const confirmed = await origin.getBlockNumber() - confirmationDepth;
