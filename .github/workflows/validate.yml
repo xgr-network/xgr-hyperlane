@@ -43,6 +43,8 @@ jobs:
           set -euo pipefail
           node tools/validate-manifests.mjs
           node --test tools/validate-manifests.test.mjs
+          node tools/build-xeta-web-catalog.mjs --check
+          node --test apps/web/keccak.test.mjs
 
       - name: Validate shell and JavaScript syntax
         shell: bash
@@ -56,6 +58,7 @@ jobs:
           fi
           node tools/check-xeta-clean.mjs
           find runtime/native-relayer -maxdepth 1 -name '*.mjs' -print0 | xargs -0 -n1 node --check
+          find apps/web -maxdepth 1 -name '*.mjs' -print0 | xargs -0 -n1 node --check
 
       - name: Native relayer tests
         shell: bash
