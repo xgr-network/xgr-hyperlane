@@ -2,7 +2,7 @@
 The desired topology is XGRChain (1643) <-> Base (8453), Polygon (137), Arbitrum One (42161). Each route requires a source ILNRegistry, source Gateway and FeeVault, version-pinned Gateway-only Warp Router, destination ValidatorRegistryV2, route-aware ISM, and source quorum governance approval.
 
 ## Status
-All new v3.1.4 gateway, router, vault and governance fields remain NULL in deployments/mainnet/ until independently verified on-chain. No XETA route is marked active by this repository. Existing Hyperlane Mailbox and MerkleTreeHook addresses are documented as infrastructure only, not as approval to reuse old Warp routers or security contracts. Polygon and Arbitrum network endpoint configurations are provisional until tested.
+All new v3.1.4 gateway, router, vault and governance fields remain NULL in deployments/mainnet/ until independently verified on-chain. No XETA route is marked active by this repository. Known Hyperlane Mailbox and MerkleTreeHook addresses are infrastructure observations only; XETA routers and security contracts need separate verified deployments. Polygon and Arbitrum network endpoint configurations are provisional until tested.
 
 ## Launch gate
 1. Deploy real upstream-compatible Gateway-only routers; direct transferRemote() must revert, while Gateway calls and Mailbox inbound calls succeed.
