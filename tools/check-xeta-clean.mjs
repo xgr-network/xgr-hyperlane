@@ -18,7 +18,7 @@ const forbiddenFiles=[
   "docs/XETA_ROUTER_ARCHITECTURE.md","contracts/README.md",
   "apps/web/README.md","apps/web/app.mjs"
 ];
-const forbidden=/v3\\.1\\.1|historical 0\\.9|legacy (bridge|redemption|on-chain)|xgr_getILNInterchainAttestation|PausableISM inside a 2-of-2/i;
+const forbidden=/v3[.]1[.]1|historical 0[.]9|legacy (bridge|redemption|on-chain)|xgr_getILNInterchainAttestation|PausableISM inside a 2-of-2/i;
 for(const path of forbiddenFiles){
   if(forbidden.test(get(path)))errs.push("retired bridge reference in "+path);
 }
