@@ -13,7 +13,7 @@ Validate manifests, Forge tests and JS relayer tests; verify actual on-chain env
 7. Update on-chain observed inventory and only then publish route as available.
 
 ## Runtime
-runtime/manage-relayers.sh starts only ILN relayer processes. Keep RELAYER_SUBMIT=false until approved and tested. Runtime env examples use NEW_XETA placeholders; never substitute old bridge token/router addresses. The legacy v3.1.1 Bridge must be decommissioned separately on its old server/checkout after pending messages are settled; this clean branch does not contain the legacy stop commands.
+runtime/manage-relayers.sh starts only ILN relayer processes. Keep RELAYER_SUBMIT=false until approved and tested. Runtime env examples use NEW_XETA placeholders; never substitute old bridge token/router addresses. Service deployment and domain routing are managed separately from this XETA source branch.
 
 ## Visibility
 Inactive routes remain on-chain active; UI can demote them but must retain an accessible direct bridge/redeem path. Emergency governance disable only for substantiated security reasons and with recoverability.
