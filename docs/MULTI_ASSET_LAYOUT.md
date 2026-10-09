@@ -1,124 +1,15 @@
-# XGR ILN - generic contracts and per-token configuration
+# XETA v3.1.4 asset and chain layout
 
-This v3.1.4-feature-branch reorganization is a repository change only.
-It does not deploy contracts, alter token custody, enable routes, start
-relayers, or modify xgr-node.
+config/chains/<chain>.json: chain/domain identity, RPC and verifier format. Chain entries do not imply confirmed deployment.
+config/assets/<ASSET>/{asset,routes,mainnet}.json: canonical token identity, representations, desired pairs, governance planning.
+deployments/mainnet/infrastructure/<chain>.json: independently observed shared Mailbox/Hook, RegistryV2, ISM and BLS verifier, with null values while pending.
+deployments/mainnet/assets/<ASSET>.json: only verified token-specific routes, routers, Gateways, FeeVaults and governance transactions.
+contracts/: chain-neutral XETA ILN security and deployment source. script/DeployXETA.s.sol: current generic deployment script.
 
-## Directory layout
+Example: XGR is native on XGRChain (1643) and new synthetic wXGR on Base, Polygon and Arbitrum. Six directed one-hop spokes are planned; each has separate source-native fee. Two-hop external-to-external UX always crosses XGRChain and needs a future sponsor/forwarder before it can be XGR-wallet-free. This repository does not claim deployment of that sponsor.
 
-~~~text
-contracts/                                generic reusable Solidity
-script/DeployV313.s.sol                   generic Foundry deployment
-config/chains/
-  xgrchain.json                           RPC, domain, chain ID, finality
-  base.json
-config/assets/XGR/
-  asset.json                              canonical asset and representations
-  routes.json                             planned ILN routes in both directions
-  mainnet.json                            desired mainnet references
-config/assets/<TOKEN>/
-  asset.json
-  routes.json
-  mainnet.json
-deployments/
-  xgrchain-mainnet.json                   original mainnet inventory retained
-  xgr-base-route.json                     original XGR/Base inventory retained
-  mainnet/infrastructure/
-    xgrchain.json                         observed shared-chain infrastructure
-    base.json
-  mainnet/assets/
-    XGR.json                               observed token routers / transfer history
-    <TOKEN>.json
-runtime/                                   unchanged legacy relayer paths
-tools/validate-manifests.mjs              read-only manifest validation
-tools/validate-manifests.test.mjs         negative regression tests
-~~~
+## Onboarding
+Use GitHub PR or a web form that creates the same manifest proposal and manual review. Project onboarding is free. A merge never activates a route without validator quorum. No inactive route is disabled; default UI and featured lists may be reordered without compromising direct redemption access. See docs/XETA_ONBOARDING.md.
 
-## What is shared and what is per token?
-
-Hyperlane Mailbox, MerkleTreeHook, BLS verifier, destination
-ValidatorRegistryV2, source ILN Registry and generic ISM belong to the
-shared chain infrastructure. Reuse them for all compatible token routes.
-
-A new token adds its own chain representations / Warp router adapters,
-source ILNGateway and FeeVault per route, plus source-chain governance.
-The native asset and its representations must not be confused with a DEX
-swap: multi-hop hub bridging remains separate user-authorized hops.
-
-Desired chain or route configuration is NOT a blockchain authority.
-Actual code addresses, deployment hashes and tested custody state belong
-only in deployments/mainnet/... after independent chain verification.
-Current v3.1.1 XGR/Base router addresses and E2E evidence are carried over
-solely as observed LEGACY state. New v3.1.4 gateway, vault, route ID and
-governance transaction fields are deliberately null / unverified.
-A ROUTE_ADD source-chain 2/3 quorum activates a new route immediately.
-Do not propose it before the destination ISM/router, finality, gas and
-validator membership are ready.
-
-## Add a chain
-
-1. Add config/chains/<CHAIN>.json with actual ID/domain, RPC, finality,
-   native gas token, verifier format and reference to the observed inventory.
-2. Add deployments/mainnet/infrastructure/<CHAIN>.json and verify every
-   recorded address. Unknown contracts stay null and are not implicitly
-   deployed by adding the file.
-3. Configure participating validators for the chain and verify BLS,
-   destination ISM, RPC histories and token settlement before route addition.
-
-## Add an asset
-
-1. Create config/assets/<TOKEN>/asset.json, routes.json and mainnet.json,
-   declaring exactly one canonical asset and any chain representations.
-   Declare separate source/destination routes for the return trip.
-2. Create deployments/mainnet/assets/<TOKEN>.json with only observed
-   code, addresses, transaction hashes and source evidence.
-3. Deploy or reuse asset-specific Warp routers / adapters and gateways.
-   Reuse shared chain contracts rather than copying Solidity per token.
-4. Verify native and ERC20 quote/allowance behaviour, conservation of
-   supply, destination settlement, relay-independent recovery and
-   source-chain fee claims.
-5. Complete source-chain validator approvals and execute ROUTE_ADD only
-   after all components are operational.
-
-Do not add invented live XDC, Polygon or other deployment addresses.
-Create their configs when their real topology and finality policy are known.
-
-
-## Manifest lifecycle for subsequent deployments
-
-The manifest validator deliberately accepts all the following stages, without
-editing it for each new token or chain:
-
-| Stage | Desired route | Observed deployment | Evidence |
-| --- | --- | --- | --- |
-| Planned | `pending-governance`, ID/fee null | `unverified-not-activated`, addresses null | None yet |
-| Contracts deployed | `pending-governance`, ID and native-source fee specified | `deployed-pending-governance`, on-chain Gateway/Vault recorded | Shared infrastructure marked `verified-deployed` with block evidence |
-| Source quorum executed | `quorum-activated`, ID and fee retained | `active`, exact ID, fee, Gateway, FeeVault and governance TX | Verified source ILN Registry and destination ISM |
-
-The asset-level `mainnet.json` flag is `not-authorized` until at least one
-route has confirmed governance, then `governance-confirmed`. These labels
-describe **recorded observations**, not authority to enable a route:
-Registry governance remains the sole source of truth.
-
-Canonical ERC-20 token identities may include the known contract address in
-`asset.json`. Deployed Warp router and Gateway addresses must only appear in
-the separate deployment inventory. Zero-decimal ERC-20 assets are supported.
-Routes sharing the same source chain, destination chain and route ID are
-rejected as ambiguous even if they belong to different assets.
-
-## Offline checks
-
-~~~bash
-node tools/validate-manifests.mjs
-node --test tools/validate-manifests.test.mjs
-forge build
-forge test -vvv
-~~~
-
-The manifest checks do not use private keys, deploy contracts, access RPCs,
-or change production state. They detect legacy-address drift, mismatched
-chain IDs/domains, invalid route endpoints and fictitious ILN activation.
-
-The planned idempotent xgr-interchain deploy-asset command is NOT implemented
-by this repository organization patch. Existing generic Foundry deployment
-and manual source-chain quorum governance remain the supported workflows.
+## Validation
+Run node tools/validate-manifests.mjs and node --test tools/validate-manifests.test.mjs before promotion. Full Forge, JS and on-chain E2E are separate requirements. No unverified address is ever populated simply to satisfy static checks.

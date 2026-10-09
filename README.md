@@ -15,7 +15,7 @@ Each direction uses an authorized ILNGateway, source FeeVault, source ILNRegistr
 - config/chains/: chain identities and finality; config/assets/: desired canonical asset representations/routes.
 - deployments/mainnet/: observed infrastructure/asset evidence, kept separately from planned contracts. Old v3.1.1 addresses are archival only and do NOT imply ILN v3.1.4 deployment.
 - runtime/native-relayer/: current ILN message relay, quorum and recovery. Existing forward/reverse legacy service control files remain until old bridge shutdown is operationally verified.
-- script/DeployXETA.s.sol: CURRENT generic deployment entrypoint retains an older file name for CLI compatibility, but deploys ILN Registry, Gateway, ValidatorRegistryV2, EIP2537 verifier and generic destination ILN ISM. It does NOT activate governance routes.
+- script/DeployXETA.s.sol: generic deployment entrypoint, but deploys ILN Registry, Gateway, ValidatorRegistryV2, EIP2537 verifier and generic destination ILN ISM. It does NOT activate governance routes.
 - docs/XETA_SPEC_V314.md: accepted source of truth for architecture, fees, sponsored refunds, permanent routes and security.
 - docs/XETA_ONBOARDING.md: free partner applications via PR or form.
 - docs/REPOSITORY_LAYOUT.md: current XETA-only project map.\n\n## Non-negotiable protections
