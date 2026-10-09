@@ -20,6 +20,10 @@ contract MockLocalGovernanceRegistry {
         setId++;
     }
 
+    function getFeeRecipients() external view returns (address[] memory validators, uint64 currentSetId) {
+        return (members, setId);
+    }
+
     function getValidatorSet() external view returns (address[] memory validators, bytes[] memory keys, uint64 currentSetId) {
         validators = members;
         keys = new bytes[](members.length);

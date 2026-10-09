@@ -58,13 +58,23 @@ contract XGRILNFeeVault {
     }
 
     function recipientCount() external view returns (uint256) {
-        (address[] memory validators,,) = validatorRegistry.getValidatorSet();
+        (address[] memory validators,) = _feeRecipients();
         return validators.length;
     }
 
     function recipientSetId() external view returns (uint64) {
-        (,,uint64 setId) = validatorRegistry.getValidatorSet();
+        (,uint64 setId) = _feeRecipients();
         return setId;
+    }
+
+    // New RegistryV2 provides address-only view. Older deployed registries
+    // retain ABI compatibility through the original getValidatorSet fallback.
+    function _feeRecipients() private view returns (address[] memory validators, uint64 setId) {
+        (bool ok, bytes memory result) = address(validatorRegistry).staticcall(
+            abi.encodeWithSignature("getFeeRecipients()")
+        );
+        if (ok && result.length >= 96) return abi.decode(result, (address[], uint64));
+        (validators,,setId) = validatorRegistry.getValidatorSet();
     }
 
     /// @notice Original source Gateway only; no settlement / retry double pay.
@@ -76,7 +86,7 @@ contract XGRILNFeeVault {
             revert InvalidOperation();
         }
 
-        (address[] memory validators,,uint64 setId) = validatorRegistry.getValidatorSet();
+        (address[] memory validators,uint64 setId) = _feeRecipients();
         uint256 n = validators.length;
         if (setId == 0 || n == 0 || n > MAX_VALIDATORS) revert InvalidValidatorSet();
 
@@ -95,10 +105,18 @@ contract XGRILNFeeVault {
 
         // Whole-wei rounding rotates between validators, avoiding a systematic
         // advantage for index zero when small route fees are used.
-        for (uint256 i; i < n; ++i) {
-            uint256 index = (cursor + i) % n;
-            uint256 amount = share + (i < remainder ? 1 : 0);
-            claimable[validators[index]] += amount;
+        // Sparse micro-fees: don't write storage slots for zero-payout validators.
+        // Equal split and rotating remainder are unchanged for all fee amounts.
+        if (share == 0) {
+            for (uint256 i; i < remainder; ++i) {
+                uint256 index = (cursor + i) % n;
+                claimable[validators[index]] += 1;
+            }
+        } else {
+            for (uint256 i; i < n; ++i) {
+                uint256 index = (cursor + i) % n;
+                claimable[validators[index]] += share + (i < remainder ? 1 : 0);
+            }
         }
         remainderCursor = (cursor + remainder) % n;
         totalAllocatedWei += msg.value;

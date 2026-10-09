@@ -189,8 +189,8 @@ contract ILNGateway {
         }
 
         IXGRILNRegistry.RouteRecord memory route = _canonicalRoute();
-        _requireFeeRecipients();
-
+        // FeeVault.allocate rechecks the validator set atomically; a failure
+        // rolls back the preceding Warp Router dispatch and token movement.
         uint256 routerNativeValueWei =
             _quoteRouterNative(recipient, amount);
         uint256 expectedValue =
